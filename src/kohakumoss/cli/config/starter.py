@@ -49,6 +49,8 @@ class TrainChoice:
     name: str = "my-lora"
     steps: int = 0  # 0 = the base config's STEPS
     prompts: tuple[str, ...] = ()
+    vae: str = ""
+    text_encoder: str = ""
 
 
 @dataclass
@@ -175,6 +177,10 @@ def train_starter(root: Path, c: TrainChoice) -> Starter:
         "DATASETS": [{**template, "path": posix(c.data)}],
         "RUN_NAME": c.name,
     }
+    if c.vae:
+        own["VAE"] = posix(c.vae)
+    if c.text_encoder:
+        own["TEXT_ENCODER"] = posix(c.text_encoder)
     if c.steps:
         own["STEPS"] = c.steps
     prompts = list(c.prompts) or dataset_prompts(compose(root, TRAIN, layers, own))
@@ -193,12 +199,14 @@ def train_starter(root: Path, c: TrainChoice) -> Starter:
 def data_starter(c: TrainChoice, train_path: Path) -> Starter:
     """The data-preparation config of `c`: the train config plus the cache encoders,
     whose dtype and precision come from its VAE_DTYPE / TEXT_ENCODE."""
-    weights = posix(c.weights)
     own = {
         "TEXT_ENCODER": "kohakumoss.encoders.text_encoder",
-        "TEXT_ENCODER_KWARGS": {"path": weights, "device": c.device},
+        "TEXT_ENCODER_KWARGS": {
+            "path": posix(c.text_encoder or c.weights),
+            "device": c.device,
+        },
         "IMAGE_ENCODER": "kohakumoss.encoders.vae_encoder",
-        "IMAGE_ENCODER_KWARGS": {"path": weights, "device": c.device},
+        "IMAGE_ENCODER_KWARGS": {"path": posix(c.vae or c.weights), "device": c.device},
     }
     title = (
         f"{c.name}: the train config's data knobs plus the cache encoders. Drives "

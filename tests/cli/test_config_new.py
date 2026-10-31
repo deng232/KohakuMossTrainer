@@ -3,6 +3,7 @@ writes a train config, a data config and a sample config that load back to the c
 knobs and pass the knob checks; unsupported ones are refused before anything is
 written."""
 
+import runpy
 import sys
 from pathlib import Path
 
@@ -64,6 +65,51 @@ def assert_written_valid(path: Path) -> None:
 
 def assert_ascii(path: Path) -> None:
     path.read_bytes().decode("ascii")
+
+
+def test_single_file_weights_with_explicit_encoders(tmp_path):
+    weights = tmp_path / "model.safetensors"
+    vae = tmp_path / "vae.safetensors"
+    encoder = tmp_path / "encoder.safetensors"
+    for path in (weights, vae, encoder):
+        path.touch()
+    out, data = new_train(
+        tmp_path,
+        "--weights",
+        str(weights),
+        "--vae",
+        str(vae),
+        "--text-encoder",
+        str(encoder),
+        "--vram",
+        "12",
+        "--precision",
+        "bf16",
+    )
+    _, knobs = config_knobs(out, ROOT)
+    assert knobs["WEIGHTS"] == str(weights)
+    assert knobs["VAE"] == str(vae)
+    assert knobs["TEXT_ENCODER"] == str(encoder)
+    _, data_knobs = config_knobs(data, ROOT)
+    assert data_knobs["TEXT_ENCODER_KWARGS"]["path"] == str(encoder)
+    assert data_knobs["IMAGE_ENCODER_KWARGS"]["path"] == str(vae)
+    assert_written_valid(out)
+    assert_written_valid(data)
+
+    integration = runpy.run_path(
+        str(ROOT / "integrations/ComfyUI-KohakuMoss-Trainer/kohaku_comfy/config.py")
+    )
+    settings = {
+        **integration["DEFAULTS"],
+        "transformer": str(weights),
+        "vae": str(vae),
+        "text_encoder": str(encoder),
+    }
+    integration["configure_generated"](
+        out, settings, tmp_path / "runs", tmp_path / "cache"
+    )
+    assert_written_valid(out)
+    assert_written_valid(data)
 
 
 @pytest.mark.parametrize("vram", VRAMS)

@@ -121,6 +121,9 @@ class ConfigTests(unittest.TestCase):
             )
 
         engine.use_config = use_config
+        engine.load_config_file = lambda path: types.SimpleNamespace(
+            globals_dict=runpy.run_path(path)
+        )
         with patch.dict(sys.modules, kohakuengine=engine):
             t, d = runpy.run_path(str(train)), runpy.run_path(str(data))
         self.assertEqual(t["TEXT_ENCODER"], str(self.model))
@@ -135,6 +138,34 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(t["SAMPLE_EVERY"], 0)
         self.assertFalse(t["SAVE_MERGED"])
         self.assertEqual(t["TARGET_AREA"], 802816)
+
+    def test_cache_plans_resolve_without_eager_use_config_globals(self):
+        from kohaku_comfy.config import configure_generated, validate
+
+        settings = validate(self.values, self.root, self.workspace)
+        train = self.root / "train.py"
+        train.write_text(
+            'TEXT_ENCODE = {"memory": "ring"}\nVAE_ENCODE = {"memory": "offload"}\n'
+        )
+        data = self.root / "train_data.py"
+        data.write_text(
+            "from kohakuengine import use_config\n"
+            f"use_config({str(train)!r})\n"
+            "TEXT_ENCODER_KWARGS = {'device': 'cuda'}\n"
+            "IMAGE_ENCODER_KWARGS = {'device': 'cuda'}\n"
+        )
+        configure_generated(
+            train, settings, self.workspace / "runs", self.workspace / "cache"
+        )
+        engine = types.ModuleType("kohakuengine")
+        engine.use_config = lambda path: None
+        engine.load_config_file = lambda path: types.SimpleNamespace(
+            globals_dict=runpy.run_path(path)
+        )
+        with patch.dict(sys.modules, kohakuengine=engine):
+            loaded = runpy.run_path(str(data))
+        self.assertEqual(loaded["TEXT_ENCODER_KWARGS"]["plan"], {"memory": "ring"})
+        self.assertEqual(loaded["IMAGE_ENCODER_KWARGS"]["plan"], {"memory": "offload"})
 
     def test_legacy_job_pixel_area_is_preserved_as_mp(self):
         from kohaku_comfy.config import validate
@@ -240,6 +271,9 @@ args = sys.argv[1:]
 if args[0] == "--version":
     print("fake runtime")
 elif args[0] == "new":
+    weights = pathlib.Path(args[args.index("--weights") + 1])
+    if weights.is_file() and ("--vae" not in args or "--text-encoder" not in args):
+        sys.exit("single-file WEIGHTS requires VAE and TEXT_ENCODER before validation")
     out = pathlib.Path(args[args.index("--out") + 1])
     name = args[args.index("--name") + 1]
     data = args[args.index("--data") + 1]
@@ -372,6 +406,12 @@ class JobTests(unittest.TestCase):
             ],
         )
         self.assertEqual(done["metrics"]["loss"], 0.5)
+        generate = done["commands"][0]["argv"]
+        self.assertEqual(generate[generate.index("--vae") + 1], self.settings["vae"])
+        self.assertEqual(
+            generate[generate.index("--text-encoder") + 1],
+            self.settings["text_encoder"],
+        )
         again = self.manager.submit(self.settings, "prompt2:node1")
         self.assertNotEqual(job["job_id"], again["job_id"])
         self.wait(again["job_id"], {"completed", "failed"})

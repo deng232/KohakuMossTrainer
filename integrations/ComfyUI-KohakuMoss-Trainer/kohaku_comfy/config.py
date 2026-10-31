@@ -218,10 +218,14 @@ def configure_generated(train, settings, output_parent, cache_dir):
             "\n# Keep native factories and use the same weights and plans as training.\n"
         )
         f.write(
+            "from kohakuengine import load_config_file as _load_train_config\n"
+            f"_train_knobs = _load_train_config({str(train)!r}).globals_dict\n"
+        )
+        f.write(
             "TEXT_ENCODER_KWARGS = {**TEXT_ENCODER_KWARGS, "
-            f"'path': {settings['text_encoder']!r}, 'plan': dict(TEXT_ENCODE)}}\n"
+            f"'path': {settings['text_encoder']!r}, 'plan': dict(_train_knobs.get('TEXT_ENCODE') or {{}})}}\n"
         )
         f.write(
             "IMAGE_ENCODER_KWARGS = {**IMAGE_ENCODER_KWARGS, "
-            f"'path': {settings['vae']!r}, 'plan': dict(VAE_ENCODE)}}\n"
+            f"'path': {settings['vae']!r}, 'plan': dict(_train_knobs.get('VAE_ENCODE') or {{}})}}\n"
         )

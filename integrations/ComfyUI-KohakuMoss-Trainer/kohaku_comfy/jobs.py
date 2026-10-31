@@ -3,6 +3,7 @@
 import copy
 import fcntl
 import json
+import logging
 import os
 import shutil
 import signal
@@ -136,6 +137,7 @@ class JobManager:
             job["phases"].append({"phase": phase, "started_at": now})
             job["status"] = phase
             self._save(job)
+        logging.info("[KohakuMoss] Job %s: %s", job["job_id"], phase)
 
     def _claim(self):
         if self.active or any(j["status"] == "unknown" for j in self.jobs.values()):
@@ -518,6 +520,10 @@ class JobManager:
                         "train",
                         "--weights",
                         settings["transformer"],
+                        "--vae",
+                        settings["vae"],
+                        "--text-encoder",
+                        settings["text_encoder"],
                         "--data",
                         settings["dataset_path"],
                         "--source",
@@ -633,3 +639,7 @@ class JobManager:
             if job["phases"]:
                 job["phases"][-1]["ended_at"] = time.time()
             self._update(job, status=status, error=error, finished_at=time.time())
+        if error:
+            logging.error("[KohakuMoss] Job %s %s: %s", job["job_id"], status, error)
+        else:
+            logging.info("[KohakuMoss] Job %s: %s", job["job_id"], status)

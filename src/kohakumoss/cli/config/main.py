@@ -83,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--gpus", type=int, default=1, help="devices (Linux for > 1)")
     train.add_argument("--name", default="my-lora", help="RUN_NAME and file name")
     train.add_argument("--steps", type=int, default=0, help="0 = the base STEPS")
+    train.add_argument("--vae", default="", help="VAE path for single-file weights")
+    train.add_argument(
+        "--text-encoder", default="", help="text encoder path for single-file weights"
+    )
     sample = new.add_parser("sample", help="sample config")
     sample.add_argument(
         "--weights",
@@ -208,6 +212,8 @@ def new_train(root: Path, args) -> None:
         name=args.name,
         steps=args.steps,
         prompts=tuple(args.prompt),
+        vae=args.vae,
+        text_encoder=args.text_encoder,
     )
     out = Path(args.out) if args.out else out_dir(root) / f"{args.name}.py"
     write_train(root, choice, out, args.force)
