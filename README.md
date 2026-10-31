@@ -1,5 +1,41 @@
 # KohakuMoss
 
+## ComfyUI Manager installation (this fork)
+
+This fork retains the native trainer and adds a **KohakuMoss Trainer** ComfyUI
+node, dataset folder upload, background training, a monitoring sidebar, checkpoint
+resume and LoRA export. The upstream trainer is
+[KohakuBlueleaf/KohakuMossTrainer](https://github.com/KohakuBlueleaf/KohakuMossTrainer).
+
+On Linux with an NVIDIA GPU:
+
+1. Open **ComfyUI-Manager -> Install via Git URL** and enter
+   `https://github.com/deng232/KohakuMossTrainer`.
+2. Wait for the installation to finish. Manager runs the root `install.py`, which
+   creates a separate Python environment, installs the matching CUDA PyTorch and
+   trainer dependencies, and runs the hardware doctor. Internet access and disk
+   space for another PyTorch installation are required.
+3. Restart ComfyUI. Add **Kohaku/Training -> KohakuMoss Trainer**, or import the
+   [example workflow](integrations/ComfyUI-KohakuMoss-Trainer/examples/kohakumoss_single_node_workflow.json).
+4. Choose a dataset folder and locally installed MOSS model, Qwen text encoder and
+   Flux2 VAE. Queue the node and open the **KohakuMoss** sidebar to follow training.
+   Exported LoRAs default to ComfyUI's registered LoRA directory.
+
+Do not also link the nested integration into `custom_nodes`: the repository root
+already loads it. If migrating from the earlier manual symlink installation,
+disable that old node entry before restarting to avoid duplicate nodes and routes.
+Keep the old checkout and output directories until existing jobs are no longer
+needed. To resume old jobs, retain the same `KOHAKUMOSS_WORKSPACE` path.
+
+Manager's install/repair operation can rerun setup. For a failed installation, see
+its console output; the installer exits with an error rather than reporting
+success. Trainer packages are installed into this checkout's `.venv`, never into
+ComfyUI's Python environment. The native CLI remains available as before.
+See the [integration guide](integrations/ComfyUI-KohakuMoss-Trainer/README.md) for
+settings, checkpoint behavior and manual installation.
+
+## Native trainer
+
 A finetuning framework for [MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base)
 (MOSS-Image-Base / -SFT): every LyCORIS algorithm and full finetune on text-image data at
 native resolutions, plus inference, on Windows and Linux, from 6 GB cards to multi-GPU
@@ -45,6 +81,9 @@ column.
   `kohakumoss-config` writes a checked config for your GPU and dataset.
 
 ## Install
+
+For the single-node ComfyUI integration, see
+[ComfyUI-KohakuMoss-Trainer](integrations/ComfyUI-KohakuMoss-Trainer/README.md).
 
 torch comes from the PyTorch index that matches your GPU and driver; the install helper
 detects both, installs torch from that index, then KohakuMoss with its default extra,

@@ -5,11 +5,13 @@ set -euo pipefail
 
 TORCH_SPEC="${KM_TORCH:-torch>=2.13,<2.15}"
 PYTHON=3.12
+VENV="${KOHAKUMOSS_VENV:-$PWD/.venv}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 if command -v nvidia-smi >/dev/null 2>&1; then
   # "CUDA Version: X.Y", or "CUDA UMD Version: X.Y" on newer drivers
-  if ! read -r major minor < <(nvidia-smi | sed -n 's/.*CUDA \(UMD \)\{0,1\}Version: *\([0-9]*\)\.\([0-9]*\).*/\2 \3/p' | head -1); then
+  read -r major minor <<< "$(nvidia-smi | sed -n 's/.*CUDA \(UMD \)\{0,1\}Version: *\([0-9]*\)\.\([0-9]*\).*/\2 \3/p' | head -1)"
+  if [[ ! "$major" =~ ^[0-9]+$ || ! "$minor" =~ ^[0-9]+$ ]]; then
     echo "could not read the CUDA version from nvidia-smi; install by hand: docs/guides/install.md#manual-install" >&2; exit 1
   fi
   ver=$((major * 100 + minor))
@@ -30,13 +32,13 @@ echo "torch index: $index"
 if [ -f "$HERE/pyproject.toml" ]; then pkg=(-e "$HERE$extra"); else pkg=("kohakumoss$extra"); fi
 
 if command -v uv >/dev/null 2>&1; then
-  [ -d .venv ] || uv venv -p "$PYTHON"
-  uv pip install "$TORCH_SPEC" torchvision --index-url "$index"
-  uv pip install "${pkg[@]}" "$TORCH_SPEC" --extra-index-url "$index" --index-strategy unsafe-best-match
+  [ -d "$VENV" ] || uv venv -p "$PYTHON" "$VENV"
+  uv pip install --python "$VENV/bin/python" "$TORCH_SPEC" torchvision --index-url "$index"
+  uv pip install --python "$VENV/bin/python" "${pkg[@]}" "$TORCH_SPEC" --extra-index-url "$index" --index-strategy unsafe-best-match
 else
   # python3.12 when installed, else the system python3
-  [ -d .venv ] || "$(command -v "python$PYTHON" || command -v python3)" -m venv .venv
-  .venv/bin/python -m pip install "$TORCH_SPEC" torchvision --index-url "$index"
-  .venv/bin/python -m pip install "${pkg[@]}" "$TORCH_SPEC" --extra-index-url "$index"
+  [ -d "$VENV" ] || "$(command -v "python$PYTHON" || command -v python3)" -m venv "$VENV"
+  "$VENV/bin/python" -m pip install "$TORCH_SPEC" torchvision --index-url "$index"
+  "$VENV/bin/python" -m pip install "${pkg[@]}" "$TORCH_SPEC" --extra-index-url "$index"
 fi
-.venv/bin/kohakumoss-doctor
+"$VENV/bin/kohakumoss-doctor"

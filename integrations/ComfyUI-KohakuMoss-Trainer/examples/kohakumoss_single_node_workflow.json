@@ -1,0 +1,111 @@
+{
+  "last_node_id": 1,
+  "last_link_id": 0,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "KohakuMossTrainer",
+      "pos": [
+        100,
+        100
+      ],
+      "size": [
+        500,
+        1400
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "job_id",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KohakuMossTrainer"
+      },
+      "widgets_values": [
+        "moss-lora",
+        "/path/to/ComfyUI/input/train",
+        "kohya",
+        "moss_image_base_int8_convrot.safetensors",
+        "qwen3.5_9b_int8_convrot.safetensors",
+        "flux2-vae_small.safetensors",
+        "lora",
+        32,
+        32.0,
+        2000,
+        0.0001,
+        "vram_12g",
+        500,
+        "offline_both",
+        "new",
+        "",
+        "latest",
+        "bf16",
+        0,
+        1.048576,
+        1,
+        "tokens",
+        1,
+        4,
+        0,
+        "native",
+        4,
+        0.1,
+        "resize",
+        "comfy",
+        true,
+        3,
+        "",
+        true,
+        ""
+      ],
+      "widgets_values_named": {
+        "run_name": "moss-lora",
+        "dataset_path": "/path/to/ComfyUI/input/train",
+        "dataset_source": "kohya",
+        "transformer": "moss_image_base_int8_convrot.safetensors",
+        "text_encoder": "qwen3.5_9b_int8_convrot.safetensors",
+        "vae": "flux2-vae_small.safetensors",
+        "algorithm": "lora",
+        "rank": 32,
+        "alpha": 32.0,
+        "steps": 2000,
+        "learning_rate": 0.0001,
+        "memory_profile": "vram_12g",
+        "save_every": 500,
+        "cache_policy": "offline_both",
+        "start_mode": "new",
+        "resume_job_id": "",
+        "resume_checkpoint": "latest",
+        "precision": "bf16",
+        "max_tokens": 0,
+        "target_mp": 1.048576,
+        "batch_size": 1,
+        "batching": "tokens",
+        "grad_accum": 1,
+        "microbatches": 4,
+        "seed": 0,
+        "caption_template": "native",
+        "caption_variants": 4,
+        "text_dropout": 0.1,
+        "resolution_mode": "resize",
+        "save_format": "comfy",
+        "checkpoint_export": true,
+        "keep_last": 3,
+        "output_root": "",
+        "publish_to_loras": true,
+        "output_path": ""
+      }
+    }
+  ],
+  "links": [],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

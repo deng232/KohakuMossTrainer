@@ -1,0 +1,10 @@
+[project]
+name = "ComfyUI-KohakuMoss-Trainer"
+version = "0.1.0"
+description = "A single asynchronous ComfyUI node for KohakuMossTrainer"
+requires-python = ">=3.10"
+license = { text = "KohakuMoss License 1.0" }
+dependencies = []
+
+[tool.comfy]
+DisplayName = "KohakuMoss Trainer"
