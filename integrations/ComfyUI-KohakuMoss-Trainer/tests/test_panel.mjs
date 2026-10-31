@@ -6,6 +6,7 @@ import vm from "node:vm";
 test("a late log response cannot replace the newly selected job's logs or cursor", async () => {
     const elements = [], timers = [], requests = [];
     let extension, releaseLogs;
+    const listeners = new Map(), queued = [];
     class Element {
         constructor(tag) {
             this.tag = tag;
@@ -18,6 +19,7 @@ test("a late log response cannot replace the newly selected job's logs or cursor
         append() {}
         replaceChildren() {}
         setAttribute(name, value) { this.attributes[name] = value; }
+        removeAttribute(name) { delete this.attributes[name]; }
         getContext() { return { clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {} }; }
     }
     const jobs = ["a", "b"].map(job_id => ({
@@ -26,9 +28,11 @@ test("a late log response cannot replace the newly selected job's logs or cursor
     }));
     const response = data => ({ ok: true, json: async () => data });
     const app = { registerExtension(value) { extension = value; }, extensionManager: {} };
-    const api = { async fetchApi(url) {
+    const api = { addEventListener(name, fn) { listeners.set(name, fn); }, removeEventListener(name) { listeners.delete(name); },
+        async queuePrompt(number, prompt) { queued.push(prompt); }, async fetchApi(url) {
         requests.push(url);
         if (url === "/kohakumoss/jobs") return response({ jobs });
+        if (url.endsWith("/resume")) return response({ prompt: { "1": { class_type: "KohakuMossTrainer", inputs: { start_mode: "resume_latest" } } } });
         if (url.includes("/a/logs")) return new Promise(resolve => {
             releaseLogs = () => resolve(response({ text: "old job log", offset: 77, generation: 0 }));
         });
@@ -55,6 +59,20 @@ test("a late log response cannot replace the newly selected job's logs or cursor
     await timers.shift()();
     assert.equal(logs.textContent, "new job log");
     assert.ok(requests.some(url => url.includes("/b/logs?offset=0&")));
+    const handler = listeners.get("kohakumoss.progress");
+    handler({ detail: { job_id: "b", phase: "training", step: 2, total: 5, loss: 0.25 } });
+    const progress = elements.find(node => node.tag === "progress");
+    assert.equal(progress.value, 2);
+    assert.equal(progress.max, 5);
+    assert.ok(elements.some(node => node.textContent.includes("loss: 0.25")));
+    handler({ detail: { job_id: "a", phase: "training", step: 4, total: 5 } });
+    assert.equal(progress.value, 2);
+    await elements.find(node => node.tag === "button" && node.textContent === "Continue training").onclick();
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].output["1"].inputs.start_mode, "resume_latest");
+    elements.find(node => node.tag === "section").isConnected = false;
+    await timers.shift()();
+    assert.equal(listeners.size, 0);
 });
 
 test("new mode hides the checkpoint widget and restored resume mode shows it", () => {

@@ -35,9 +35,6 @@ def get_manager():
             )
             runtime = Runtime(
                 repo=repo,
-                venv=Path(os.environ.get("KOHAKUMOSS_VENV", repo / ".venv"))
-                .expanduser()
-                .absolute(),
                 workspace=Path(
                     os.environ.get(
                         "KOHAKUMOSS_WORKSPACE",
@@ -55,8 +52,29 @@ def get_manager():
                 .resolve(),
                 publish_dir=Path(folder_paths.get_folder_paths("loras")[0]).resolve(),
             )
-            _manager = JobManager(runtime)
+            from comfy.model_management import processing_interrupted
+
+            _manager = JobManager(
+                runtime, observer=send_event, interrupted=processing_interrupted
+            )
         return _manager
+
+
+def send_event(event):
+    PromptServer.instance.send_sync("kohakumoss.progress", event)
+    if event.get("phase") == "training" and event.get("total"):
+        from comfy import model_management
+        from comfy.utils import ProgressBar
+
+        if model_management.processing_interrupted():
+            return
+        try:
+            ProgressBar(event["total"], node_id=event.get("node_id")).update_absolute(
+                event.get("step", 0)
+            )
+        except model_management.InterruptProcessingException:
+            # Comfy's progress hook clears the flag; the driver must see it and save.
+            model_management.interrupt_current_processing(True)
 
 
 def guarded(handler):
@@ -160,12 +178,35 @@ def register_routes():
             "output_path",
         }:
             raise ValueError("Invalid resume options")
-        return await asyncio.to_thread(
-            get_manager().resume,
-            request.match_info["job_id"],
-            values.get("checkpoint", "latest"),
-            additional_steps=values.get("additional_steps"),
-            output_path=values.get("output_path"),
+        job = await asyncio.to_thread(get_manager().get, request.match_info["job_id"])
+        if not job["can_resume"]:
+            raise ValueError("Choose a job with a complete checkpoint")
+        from .kohaku_comfy.config import DEFAULTS
+        from .nodes import MODELS
+
+        settings = {k: job["settings"][k] for k in DEFAULTS}
+        settings.update(
+            start_mode="resume_latest",
+            resume_job_id=job["job_id"],
+            resume_checkpoint=values.get("checkpoint", "latest"),
+            steps=values.get("additional_steps", job["settings"]["steps"]),
         )
+        if "output_path" in values:
+            settings["output_path"] = values["output_path"]
+        for key, category in MODELS.items():
+            settings[key] = next(
+                (
+                    name
+                    for name in folder_paths.get_filename_list(category)
+                    if Path(folder_paths.get_full_path(category, name)).resolve()
+                    == Path(settings[key]).resolve()
+                ),
+                "",
+            )
+            if not settings[key]:
+                raise ValueError(f"Original {key} is no longer registered in ComfyUI")
+        return {
+            "prompt": {"1": {"class_type": "KohakuMossTrainer", "inputs": settings}}
+        }
 
     _registered = True

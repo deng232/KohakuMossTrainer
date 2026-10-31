@@ -1,26 +1,20 @@
-"""One local GPU job at a time; all heavy commands run in the trainer's venv."""
+"""One blocking library run at a time, owned by the ComfyUI execution queue."""
 
 import copy
 import fcntl
 import json
 import logging
 import os
-import shutil
-import signal
-import subprocess
 import threading
 import time
 import uuid
 from pathlib import Path
 
-from .config import INT_LIMITS, cache_namespace, configure_generated, inside, validate
+from .config import INT_LIMITS, cache_namespace, inside, validate
+from .embedded import run as run_library
 from .files import checkpoints, publish, read_jsonl, read_log
-from .runtime import SCRIPTS
 
 TERMINAL = {"completed", "failed", "stopped", "interrupted"}
-STOP_TIMEOUT = 30
-KILL_TIMEOUT = 5
-LOG_BYTES = 64 * 1024 * 1024
 
 
 def process_identity(pid):
@@ -62,20 +56,17 @@ class Stopped(Exception):
     pass
 
 
-class GroupStillRunning(Exception):
-    pass
-
-
 class JobManager:
-    def __init__(self, runtime):
+    def __init__(self, runtime, observer=None, interrupted=None):
         self.runtime = runtime
+        self.observer = observer or (lambda event: None)
+        self.interrupted = interrupted or (lambda: False)
         self.root = runtime.workspace.resolve()
         (self.root / "jobs").mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
         self.jobs = {}
         self.active = None
         self.cancel = threading.Event()
-        self.process = None
         for file in (self.root / "jobs").glob("*/job.json"):
             job = json.loads(file.read_text(encoding="utf-8"))
             if file.parent.name != job["job_id"]:
@@ -137,6 +128,7 @@ class JobManager:
             job["phases"].append({"phase": phase, "started_at": now})
             job["status"] = phase
             self._save(job)
+        self.observer({"job_id": job["job_id"], "phase": phase})
         logging.info("[KohakuMoss] Job %s: %s", job["job_id"], phase)
 
     def _claim(self):
@@ -155,12 +147,18 @@ class JobManager:
         return file
 
     def submit(self, settings, submission_key):
+        job, lease, resume_path = self._submit(settings, submission_key)
+        if lease is not None:
+            self._work(job, lease, resume_path)
+        return self.get(job["job_id"])
+
+    def _submit(self, settings, submission_key):
         with self.lock:
             for job in self.jobs.values():
                 if submission_key in job["submission_keys"]:
-                    return self.get(job["job_id"])
+                    return self.get(job["job_id"]), None, None
             if settings.get("start_mode") == "resume_latest":
-                return self.resume(
+                return self._resume(
                     settings.get("resume_job_id", ""),
                     settings.get("resume_checkpoint", "latest"),
                     submission_key,
@@ -200,8 +198,7 @@ class JobManager:
                 )
                 self.jobs[job_id] = job
                 self._save(job)
-                self._launch(job, lease)
-                return self.get(job_id)
+                return self._launch(job, lease)
             except BaseException:
                 lease.close()
                 raise
@@ -219,18 +216,13 @@ class JobManager:
     def _launch(self, job, lease, resume_path=None):
         self.active = job["job_id"]
         self.cancel = threading.Event()
-        threading.Thread(
-            target=self._work,
-            args=(job, lease, resume_path),
-            name=f"kohakumoss-{job['job_id'][:8]}",
-            daemon=True,
-        ).start()
+        return job, lease, resume_path
 
     def get(self, job_id):
         with self.lock:
             job = copy.deepcopy(self.jobs[job_id])
         rows = read_jsonl(Path(job["run_dir"]) / "metrics.jsonl", 1)
-        job["metrics"] = rows[-1] if rows else {}
+        job["metrics"] = {**(rows[-1] if rows else {}), **job.get("live_metrics", {})}
         job["checkpoints"] = [str(p) for p in checkpoints(job["run_dir"])]
         job["can_resume"] = job["status"] in {
             "completed",
@@ -273,39 +265,11 @@ class JobManager:
                 job,
                 status="stopping",
                 stop_requested_at=time.time(),
-                stop_note=f"SIGTERM requested; after {STOP_TIMEOUT}s the owned process group will be forcibly stopped. No new checkpoint is guaranteed.",
+                stop_note="Finishing the current optimizer step, then saving a complete checkpoint before stopping.",
             )
-            self._signal(signal.SIGTERM)
             return self.get(job_id)
 
-    def _signal(self, signum):
-        process = self.process
-        if process is not None:
-            try:
-                os.killpg(process.pid, signum)
-            except ProcessLookupError:
-                pass
-
-    def _terminate_group(self):
-        process = self.process
-        if process is None:
-            return True
-        for signum, timeout in (
-            (signal.SIGTERM, STOP_TIMEOUT),
-            (signal.SIGKILL, KILL_TIMEOUT),
-        ):
-            self._signal(signum)
-            deadline = time.monotonic() + timeout
-            while True:
-                process.poll()
-                if process.returncode is not None and not group_alive(process.pid):
-                    return True
-                if time.monotonic() >= deadline:
-                    break
-                time.sleep(0.05)
-        return False
-
-    def resume(
+    def _resume(
         self,
         job_id,
         checkpoint="latest",
@@ -331,7 +295,7 @@ class JobManager:
                     )
             job = self.jobs[job_id]
             if submission_key and submission_key in job["submission_keys"]:
-                return self.get(job_id)
+                return self.get(job_id), None, None
             if job["status"] not in {"completed", "stopped", "failed", "interrupted"}:
                 raise ValueError(
                     "Resume requires a completed, stopped, failed or interrupted job"
@@ -378,211 +342,66 @@ class JobManager:
                     exit_code=None,
                     process=None,
                     resume_step=step,
+                    live_metrics={},
+                    progress={},
                 )
                 if submission_key:
                     job["submission_keys"].append(submission_key)
                 self._save(job)
-                self._launch(job, lease, chosen)
+                return self._launch(job, lease, chosen)
             except BaseException:
                 lease.close()
                 raise
-            return self.get(job_id)
 
-    def _provenance(self, job, env):
-        try:
-            commit = subprocess.run(
-                ["git", "-C", str(self.runtime.repo), "rev-parse", "HEAD"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=True,
-            ).stdout.strip()
-        except (OSError, subprocess.SubprocessError):
-            commit = "unknown (checkout has no git metadata)"
-        code = "import sys,json,importlib.metadata as m; print(json.dumps({'python':sys.version,'packages':{d.metadata['Name']:d.version for d in m.distributions()}}))"
-        result = subprocess.run(
-            [str(self.runtime.venv / "bin/python"), "-c", code],
-            env=env,
-            cwd=self.runtime.repo,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=True,
-        )
-        versions = json.loads(result.stdout)
-        models = {}
-        for key in ("transformer", "text_encoder", "vae"):
-            path = Path(job["settings"][key])
-            info = path.stat()
-            models[key] = dict(
-                path=str(path), size=info.st_size, mtime_ns=info.st_mtime_ns
-            )
-        warnings = [
-            "Training and ComfyUI inference share GPU memory; avoid simultaneous inference."
-        ]
-        free_disk = shutil.disk_usage(self.root).free
-        if free_disk < 20 * 1024**3:
-            warnings.append(
-                "Less than 20 GiB free disk space; caches/checkpoints may exhaust storage."
-            )
-        memory = {}
-        for line in Path("/proc/meminfo").read_text().splitlines():
-            if line.startswith(("MemAvailable:", "MemTotal:")):
-                name, value, _ = line.split()
-                memory[name.rstrip(":")] = int(value) * 1024
-        if memory.get("MemAvailable", 0) < 16 * 1024**3:
-            warnings.append(
-                "Less than 16 GiB available host RAM; streamed weights/optimizer may not fit."
-            )
-        self._update(
-            job,
-            trainer_commit=commit,
-            environment=versions,
-            models=models,
-            resources={"disk_free_bytes": free_disk, **memory},
-            warnings=warnings,
-        )
-
-    def _command(self, job, phase, argv, env):
-        if self.cancel.is_set():
-            raise Stopped()
-        self._phase(job, phase)
-        record = {"phase": phase, "argv": argv, "started_at": time.time()}
-        with self.lock:
-            job["commands"].append(record)
-            self._save(job)
-        with Path(job["log"]).open("ab", buffering=0) as log:
-            log.write(("\n" + json.dumps(argv, ensure_ascii=False) + "\n").encode())
+    def _event(self, job, event):
+        event = dict(event)
+        phase = event.pop("phase")
+        if job["status"] == phase:
+            event = {**job.get("progress", {}), **event}
+        if phase == "log" and event.get("rotated"):
+            self._update(job, log_generation=job["log_generation"] + 1)
+        if phase != "log":
             with self.lock:
-                if self.cancel.is_set():
-                    raise Stopped()
-                process = subprocess.Popen(
-                    argv,
-                    cwd=self.runtime.repo,
-                    env=env,
-                    shell=False,
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True,
-                )
-                self.process = process
-                self._update(job, process=process_identity(process.pid))
-            while process.poll() is None:
-                if self.cancel.is_set():
-                    break
-                if os.fstat(log.fileno()).st_size > LOG_BYTES:
-                    os.ftruncate(log.fileno(), 0)
-                    log.write(
-                        b"[KohakuMoss: older console output truncated at 64 MiB]\n"
-                    )
-                    self._update(job, log_generation=job["log_generation"] + 1)
-                time.sleep(0.1)
-            if self.cancel.is_set() or group_alive(process.pid):
-                if not self._terminate_group():
-                    raise GroupStillRunning(
-                        "The worker group has not exited after forced termination; GPU exclusion is retained. Stop it externally, then restart ComfyUI."
-                    )
-            with self.lock:
-                record.update(exit_code=process.returncode, ended_at=time.time())
-                self.process = None
-                self._update(job, process=None, exit_code=process.returncode)
-            if self.cancel.is_set():
-                raise Stopped()
-            if process.returncode:
-                with Path(job["log"]).open("rb") as f:
-                    f.seek(max(0, f.seek(0, 2) - 8192))
-                    tail = f.read().decode("utf-8", errors="replace")
-                raise RuntimeError(
-                    f"{phase} exited with code {process.returncode}\n{tail}"
-                )
+                if job["status"] != phase:
+                    now = time.time()
+                    if job["phases"] and "ended_at" not in job["phases"][-1]:
+                        job["phases"][-1]["ended_at"] = now
+                    job["phases"].append({"phase": phase, "started_at": now})
+                job["status"] = phase
+                if phase == "training":
+                    job.setdefault("live_metrics", {}).update(event)
+                job["progress"] = event
+                self._save(job)
+        self.observer(
+            {
+                "job_id": job["job_id"],
+                "node_id": job["submission_keys"][-1].rsplit(":", 1)[-1],
+                "phase": phase,
+                **event,
+            }
+        )
 
     def _work(self, job, lease, resume_path):
         status, error = "completed", None
         try:
-            env = self.runtime.environment()
-            self._provenance(job, env)
+            from kohakumoss_common.events import Cancelled, CleanupFailed
+
             settings = job["settings"]
-            config = Path(job["config"])
-            config_cli = str(self.runtime.venv / "bin/kohakumoss-config")
-            kogine = str(self.runtime.venv / "bin/kogine")
-            if resume_path is None:
-                Path(settings["output_root"]).mkdir(parents=True, exist_ok=True)
-                Path(job["cache_dir"]).mkdir(parents=True, exist_ok=True)
-                # WEIGHTS may be a single DiT file; every component is explicitly overridden.
-                self._command(
+            Path(settings["output_root"]).mkdir(parents=True, exist_ok=True)
+            Path(job["cache_dir"]).mkdir(parents=True, exist_ok=True)
+            try:
+                run_library(
+                    self.runtime,
                     job,
-                    "validating",
-                    [
-                        config_cli,
-                        "new",
-                        "train",
-                        "--weights",
-                        settings["transformer"],
-                        "--vae",
-                        settings["vae"],
-                        "--text-encoder",
-                        settings["text_encoder"],
-                        "--data",
-                        settings["dataset_path"],
-                        "--source",
-                        settings["dataset_source"],
-                        "--algo",
-                        settings["algorithm"],
-                        "--name",
-                        job["run_name"],
-                        "--steps",
-                        str(settings["steps"]),
-                        "--vram",
-                        "12" if settings["memory_profile"] == "vram_12g" else "auto",
-                        "--precision",
-                        settings["precision"],
-                        "--out",
-                        str(config),
-                    ],
-                    env,
+                    resume_path,
+                    lambda event: self._event(job, event),
+                    lambda: self.cancel.is_set() or self.interrupted(),
                 )
-                configure_generated(
-                    config,
-                    settings,
-                    Path(job["run_dir"]).parent,
-                    Path(job["cache_dir"]),
-                )
-            self._command(
-                job,
-                "validating",
-                [
-                    config_cli,
-                    "check",
-                    str(config),
-                    str(config.with_name("train_data.py")),
-                ],
-                env,
-            )
-            for phase, script in SCRIPTS.items():
-                if phase.startswith("caching_") and settings["cache_policy"] == "off":
-                    continue
-                data = config.with_name("train_data.py")
-                argv = [
-                    kogine,
-                    "run",
-                    script,
-                    "--config",
-                    str(config if phase == "training" else data),
-                ]
-                if phase == "training":
-                    argv += ["--set", "SAMPLE_EVERY=0", "--set", "SAVE_MERGED=false"]
-                if phase == "training" and resume_path is not None:
-                    argv += [
-                        "--set",
-                        "RESUME=" + str(resume_path),
-                        "--set",
-                        "STEPS=" + str(settings["steps"]),
-                        "--set",
-                        "FINAL_CHECKPOINT=true",
-                    ]
-                self._command(job, phase, argv, env)
+            except Cancelled:
+                raise Stopped() from None
+            except CleanupFailed as exception:
+                status, error = "unknown", str(exception)
+                raise
             if self.cancel.is_set():
                 raise Stopped()
             self._phase(job, "exporting")
@@ -611,34 +430,28 @@ class JobManager:
                 )
         except Stopped:
             status = "stopped"
-        except GroupStillRunning as exception:
-            status, error = "unknown", str(exception)
-        except Exception as exception:
-            status, error = "failed", str(exception)
+        except (Exception, SystemExit) as exception:
+            status, error = ("unknown" if status == "unknown" else "failed"), str(
+                exception
+            )
+            logging.exception("[KohakuMoss] Library training failed")
         finally:
-            safe = status != "unknown" and self._terminate_group()
             with self.lock:
                 self.active = None
-                if safe:
-                    self.process = None
-                    lease.close()
-                    self._finish(
-                        job, "stopped" if self.cancel.is_set() else status, error
-                    )
-                else:
+                if status == "unknown":
                     self.orphan_lease = lease
-                    self._finish(
-                        job,
-                        "unknown",
-                        "Worker group exit could not be confirmed. GPU exclusion is retained; stop the worker externally and restart ComfyUI. "
-                        + (error or ""),
-                    )
+                else:
+                    lease.close()
+                self._finish(job, status, error)
+        if status in {"failed", "unknown"}:
+            raise RuntimeError(error)
 
     def _finish(self, job, status, error=None):
         with self.lock:
             if job["phases"]:
                 job["phases"][-1]["ended_at"] = time.time()
             self._update(job, status=status, error=error, finished_at=time.time())
+        self.observer({"job_id": job["job_id"], "phase": status, "error": error})
         if error:
             logging.error("[KohakuMoss] Job %s %s: %s", job["job_id"], status, error)
         else:

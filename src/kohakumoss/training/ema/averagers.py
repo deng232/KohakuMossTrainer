@@ -243,6 +243,12 @@ class BackgroundEMA:
         self.join()
         self.pending = self.pool.submit(self._update, step)
 
+    def close(self) -> None:
+        try:
+            self.join()
+        finally:
+            self.pool.shutdown(wait=True)
+
     def state_dict(self) -> dict[str, Tensor]:
         self.join()
         return self.inner.state_dict()

@@ -6,6 +6,8 @@ import threading
 import weakref
 from collections.abc import Callable
 
+from kohakumoss_common.events import current
+
 JOIN_TIMEOUT = 5.0
 _STOP = object()
 
@@ -58,3 +60,5 @@ class HostWorker:
     def close(self) -> None:
         """Stop the thread (idempotent; queued jobs run first)."""
         self._finalizer()
+        if current() is not None and self.thread is not threading.current_thread():
+            self.thread.join()

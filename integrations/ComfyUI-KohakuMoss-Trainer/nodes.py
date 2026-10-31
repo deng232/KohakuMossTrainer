@@ -157,7 +157,7 @@ class KohakuMossTrainer(io.ComfyNode):
             display_name="KohakuMoss Trainer",
             category="Kohaku/Training",
             is_output_node=True,
-            description="Submit one background training job. Open the KohakuMoss sidebar for status, Stop and Resume. Changes affect only the next submission.",
+            description="Train in the ComfyUI queue until exports and cleanup finish. Open the KohakuMoss sidebar for live progress, Stop and Resume.",
             inputs=inputs,
             outputs=[io.String.Output("job_id")],
         )
@@ -177,7 +177,17 @@ class KohakuMossTrainer(io.ComfyNode):
         if settings.get("start_mode") != "resume_latest":
             for name, category in MODELS.items():
                 settings[name] = model_path(category, settings.get(name, ""))
-        job = get_manager().submit(settings, f"{context.prompt_id}:{context.node_id}")
+        from comfy import model_management
+
+        model_management.unload_all_models()
+        model_management.soft_empty_cache()
+        try:
+            job = get_manager().submit(
+                settings, f"{context.prompt_id}:{context.node_id}"
+            )
+        finally:
+            model_management.soft_empty_cache()
+        model_management.throw_exception_if_processing_interrupted()
         return io.NodeOutput(
             job["job_id"],
             ui={"kohakumoss_job": [job["job_id"]], "status": [job["status"]]},

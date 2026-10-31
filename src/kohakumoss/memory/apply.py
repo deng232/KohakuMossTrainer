@@ -29,6 +29,7 @@ from kohakumoss.quant.convert import (
 )
 from kohakumoss.quant.densify import densify_bases, stored_formats
 from kohakumoss.types.plans import MemoryPlan
+from kohakumoss_common.events import CleanupFailed
 from kohakumoss_kernels.dist import dist_rank, grouped
 
 QUANT = ("fp8", "int8", "fp8_compute", "mxfp8")
@@ -111,9 +112,12 @@ class MemoryEngines:
 
     def close(self) -> None:
         """Stop every host worker thread the engines started."""
-        for engine in (self.weight_stream, self.grads):
-            if engine is not None:
-                engine.close()
+        try:
+            if self.weight_stream is not None:
+                self.weight_stream.close()
+        finally:
+            if self.grads is not None:
+                self.grads.close()
 
 
 def _node_share(trainable: bool, n_blocks: int, device, plan: MemoryPlan) -> dict:
@@ -277,71 +281,80 @@ def apply_to_backbone(
     (anything exposing `layers` and `set_runner`), on any device: weights end on
     `device` except the streamed block weights, which stay in host memory."""
     engines = MemoryEngines(plan, backbone=backbone)
-    report = quantize_base(
-        backbone,
-        plan,
-        compute_dtype,
-        training,
-        trainable_base,
-        keep_fp32,
-        quant_min_features,
-        work_device(device),
-    )
-    if report is not None:
-        engines.reports["quant"] = report
-    if plan.int8_compute:
-        select_int8_compute(backbone, plan.int8_dgrad)
-    if plan.stream == "off":
-        backbone.to(device)
-    rebind_quant(backbone, device, compute_dtype, autograd=training)
-    fp8 = trainable_compute(
-        backbone,
-        plan,
-        compute_dtype,
-        training,
-        trainable_base,
-        keep_fp32,
-        quant_min_features,
-    )
-    if fp8 is not None:
-        engines.fp8 = fp8
-        engines.reports["quant"] = {
-            "layers": len(engines.fp8),
-            "cache_bytes": sum(lin.compute.nbytes() for lin in engines.fp8),
-        }
-    if plan.stream != "off":
-        move_except(backbone, backbone.layers, device)
-        trainable = plan.stream == "swap" and trainable_base
-        engines.weight_stream = WeightStream(
+    try:
+        report = quantize_base(
+            backbone,
+            plan,
+            compute_dtype,
+            training,
+            trainable_base,
+            keep_fp32,
+            quant_min_features,
+            work_device(device),
+        )
+        if report is not None:
+            engines.reports["quant"] = report
+        if plan.int8_compute:
+            select_int8_compute(backbone, plan.int8_dgrad)
+        if plan.stream == "off":
+            backbone.to(device)
+        rebind_quant(backbone, device, compute_dtype, autograd=training)
+        fp8 = trainable_compute(
+            backbone,
+            plan,
+            compute_dtype,
+            training,
+            trainable_base,
+            keep_fp32,
+            quant_min_features,
+        )
+        if fp8 is not None:
+            engines.fp8 = fp8
+            engines.reports["quant"] = {
+                "layers": len(engines.fp8),
+                "cache_bytes": sum(lin.compute.nbytes() for lin in engines.fp8),
+            }
+        if plan.stream != "off":
+            move_except(backbone, backbone.layers, device)
+            trainable = plan.stream == "swap" and trainable_base
+            engines.weight_stream = WeightStream(
+                backbone.layers,
+                device,
+                slots=max(plan.stream_resident, 2),
+                pinned=plan.pinned,
+                trainable=trainable,
+                dtype=compute_dtype,
+                **_node_share(
+                    trainable and training, len(backbone.layers), device, plan
+                ),
+            )
+            masters = {id(p) for p in engines.weight_stream.params.values()}
+            for block in backbone.layers:
+                for t in list(block.parameters()) + list(block.buffers()):
+                    if id(t) not in masters:
+                        t.data = t.data.to(device)
+        if training and plan.act_offload:
+            engines.offload = ActivationOffload(
+                device, pinned=plan.pinned, inflight=plan.act_offload_inflight
+            )
+            engines.offload.exclude(p for p in backbone.parameters())
+            engines.offload.exclude(p for p in backbone.buffers())
+            if engines.weight_stream is not None:
+                engines.offload.exclude(engines.weight_stream.storages())
+        engines.runner = build_runner(
+            plan.checkpoint if training else "none",
             backbone.layers,
-            device,
-            slots=max(plan.stream_resident, 2),
-            pinned=plan.pinned,
-            trainable=trainable,
-            dtype=compute_dtype,
-            **_node_share(trainable and training, len(backbone.layers), device, plan),
+            offload=engines.offload,
+            weight_stream=engines.weight_stream,
         )
-        masters = {id(p) for p in engines.weight_stream.params.values()}
-        for block in backbone.layers:
-            for t in list(block.parameters()) + list(block.buffers()):
-                if id(t) not in masters:
-                    t.data = t.data.to(device)
-    if training and plan.act_offload:
-        engines.offload = ActivationOffload(
-            device, pinned=plan.pinned, inflight=plan.act_offload_inflight
-        )
-        engines.offload.exclude(p for p in backbone.parameters())
-        engines.offload.exclude(p for p in backbone.buffers())
-        if engines.weight_stream is not None:
-            engines.offload.exclude(engines.weight_stream.storages())
-    engines.runner = build_runner(
-        plan.checkpoint if training else "none",
-        backbone.layers,
-        offload=engines.offload,
-        weight_stream=engines.weight_stream,
-    )
-    backbone.set_runner(engines.runner)
-    return engines
+        backbone.set_runner(engines.runner)
+        return engines
+    except BaseException:
+        try:
+            engines.close()
+        except Exception as error:
+            raise CleanupFailed(f"Partial model cleanup failed: {error}") from error
+        raise
 
 
 @torch.no_grad()

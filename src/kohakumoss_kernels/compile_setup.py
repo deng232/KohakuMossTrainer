@@ -6,6 +6,7 @@ docs/internals/kernel-dev.md#compile-backend."""
 import os
 import sys
 
+from kohakumoss_common.events import current
 from kohakumoss_kernels import cache_tag
 
 QUIESCE_ENV = "TORCHINDUCTOR_QUIESCE_ASYNC_COMPILE_POOL"
@@ -26,6 +27,8 @@ def apply() -> str:
     it put in place when that config is already loaded. Idempotent; returns the pool
     setting in force."""
     cache_tag.apply()
+    if current() is not None:
+        return "host compile pool"
     if QUIESCE_ENV not in os.environ:
         os.environ[QUIESCE_ENV] = "0"
         loaded = sys.modules.get(INDUCTOR_CONFIG)

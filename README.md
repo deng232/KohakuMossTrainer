@@ -3,7 +3,7 @@
 ## ComfyUI Manager installation (this fork)
 
 This fork retains the native trainer and adds a **KohakuMoss Trainer** ComfyUI
-node, dataset folder upload, background training, a monitoring sidebar, checkpoint
+node, dataset folder upload, in-process training, a live monitoring sidebar, checkpoint
 resume and LoRA export. The upstream trainer is
 [KohakuBlueleaf/KohakuMossTrainer](https://github.com/KohakuBlueleaf/KohakuMossTrainer).
 
@@ -12,9 +12,8 @@ On Linux with an NVIDIA GPU:
 1. Open **ComfyUI-Manager -> Install via Git URL** and enter
    `https://github.com/deng232/KohakuMossTrainer`.
 2. Wait for the installation to finish. Manager runs the root `install.py`, which
-   creates a separate Python environment, installs the matching CUDA PyTorch and
-   trainer dependencies, and runs the hardware doctor. Internet access and disk
-   space for another PyTorch installation are required.
+   installs trainer dependencies into ComfyUI's current Python environment. Existing
+   PyTorch/CUDA packages are constrained, not replaced. Requires torch >=2.13,<2.15.
 3. Restart ComfyUI. Add **Kohaku/Training -> KohakuMoss Trainer**, or import the
    [example workflow](integrations/ComfyUI-KohakuMoss-Trainer/examples/kohakumoss_single_node_workflow.json).
 4. Choose a dataset folder and locally installed MOSS model, Qwen text encoder and
@@ -29,8 +28,10 @@ needed. To resume old jobs, retain the same `KOHAKUMOSS_WORKSPACE` path.
 
 Manager's install/repair operation can rerun setup. For a failed installation, see
 its console output; the installer exits with an error rather than reporting
-success. Trainer packages are installed into this checkout's `.venv`, never into
-ComfyUI's Python environment. The native CLI remains available as before.
+success. The node calls the trainer as a Python library and occupies ComfyUI's
+queue until training, export and cleanup finish. Stop saves a complete checkpoint
+after the current optimizer step. Old trainer `.venv` directories are unused and
+left intact. The native CLI remains available as before.
 See the [integration guide](integrations/ComfyUI-KohakuMoss-Trainer/README.md) for
 settings, checkpoint behavior and manual installation.
 

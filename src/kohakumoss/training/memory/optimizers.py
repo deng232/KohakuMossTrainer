@@ -258,8 +258,14 @@ def build_memory_optim(
         grad_names=extra.get("grad_names"),
         reduce_step=getattr(hooks, "reduce_step", None),
     )
-    wire = _wire_fused if w.fused else _wire_kept
-    return wire(bundle, w, engines, grads, device_params, block_groups, hyper, hooks)
+    try:
+        wire = _wire_fused if w.fused else _wire_kept
+        return wire(
+            bundle, w, engines, grads, device_params, block_groups, hyper, hooks
+        )
+    except BaseException:
+        bundle.close()
+        raise
 
 
 @dataclass(frozen=True)

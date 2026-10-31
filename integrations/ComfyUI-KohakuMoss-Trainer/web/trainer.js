@@ -41,12 +41,14 @@ function mount(host) {
     root.style.cssText = "padding:12px;display:flex;flex-direction:column;gap:10px;overflow:auto;height:100%;box-sizing:border-box";
     element("h3", "KohakuMoss Trainer", root);
     element("p", "Start with Queue Prompt. Changes to the workflow apply only to the next new job.", root);
-    element("p", "Training shares GPU memory with inference. Use this UI only with trusted users; do not expose an unauthenticated ComfyUI server to the internet.", root);
+    element("p", "Training runs inside the ComfyUI queue. Queued inference waits until training and cleanup finish.", root);
     const label = element("label", "Job history ", root);
     const select = element("select", undefined, label);
     select.setAttribute("aria-label", "Select training job");
     select.style.maxWidth = "100%";
     const status = element("p", "No jobs yet.", root);
+    const progress = element("progress", undefined, root);
+    progress.setAttribute("aria-label", "Current training phase progress");
     const actions = element("div", undefined, root);
     const stop = element("button", "Stop", actions);
     const resume = element("button", "Continue training", actions);
@@ -58,7 +60,7 @@ function mount(host) {
     additional.min = "1";
     additional.step = "1";
     additional.value = "1000";
-    element("p", "Stop uses SIGTERM, then forces the owned process group to exit after 30 seconds if needed. It does not guarantee a new checkpoint. Continue uses the selected checkpoint and additional steps, keeping the original job settings and LoRA output path.", root);
+    element("p", "Stop finishes the current optimizer step, saves a complete checkpoint and releases training memory. Continue adds a training prompt to the ComfyUI queue using the selected checkpoint.", root);
     const error = element("pre", "", root);
     error.setAttribute("role", "status");
     const metrics = element("pre", "", root);
@@ -79,6 +81,7 @@ function mount(host) {
 
     let selected = "", offset = 0, generation = 0, selectionVersion = 0, timer, controller;
     let disposed = false, mounted = false, controlling = false;
+    let liveRows = [];
     const request = async (url, options = {}, signal = controller?.signal) => {
         const response = await api.fetchApi(`/kohakumoss/jobs${url}`, { ...options, signal });
         const data = await response.json();
@@ -89,8 +92,39 @@ function mount(host) {
         disposed = true;
         clearTimeout(timer);
         controller?.abort();
+        api.removeEventListener("kohakumoss.progress", onProgress);
     };
     disposePanel = dispose;
+
+    const onProgress = ({ detail: event }) => {
+        if (disposed) return;
+        if (event.phase === "validating" && event.job_id !== selected) {
+            selected = event.job_id;
+            selectionVersion += 1;
+            offset = generation = 0;
+            liveRows = [];
+            logs.textContent = "";
+        }
+        if (selected && event.job_id !== selected) return;
+        status.textContent = `${event.phase} · ${event.job_id}`;
+        if (event.phase === "log") {
+            // Logs are retrieved by offset so reconnects never duplicate lines.
+            return;
+        }
+        if (event.phase === "training" && event.metrics_step != null && Number.isFinite(event.loss)) {
+            liveRows.push({ step: event.step, loss: event.loss });
+            liveRows = liveRows.slice(-1000);
+            plot(chart, liveRows);
+        }
+        if (event.total > 0) {
+            progress.max = event.total;
+            progress.value = event.step ?? event.completed ?? 0;
+        } else progress.removeAttribute("value");
+        metrics.textContent = Object.entries(event)
+            .filter(([key]) => !["job_id", "node_id", "phase"].includes(key))
+            .map(([key, value]) => `${key}: ${value ?? "—"}`).join("\n");
+    };
+    api.addEventListener("kohakumoss.progress", onProgress);
 
     async function poll() {
         if (disposed) return;
@@ -108,7 +142,7 @@ function mount(host) {
                 return option;
             }));
             select.value = selected;
-            if (selected !== previous) { offset = 0; generation = 0; logs.textContent = ""; }
+            if (selected !== previous) { offset = 0; generation = 0; logs.textContent = ""; liveRows = []; }
             const job = jobs.find(job => job.job_id === selected);
             if (!job) {
                 stop.disabled = resume.disabled = true;
@@ -122,6 +156,11 @@ function mount(host) {
             }));
             checkpoint.value = job.checkpoints.includes(chosen) ? chosen : job.checkpoints.at(-1) || "";
             status.textContent = `${job.status} · ${job.job_id}`;
+            const snapshot = job.progress || {};
+            if (snapshot.total > 0) {
+                progress.max = snapshot.total;
+                progress.value = snapshot.step ?? snapshot.completed ?? 0;
+            } else progress.removeAttribute("value");
             stop.disabled = controlling || ["completed", "failed", "stopped", "interrupted", "unknown", "stopping"].includes(job.status);
             resume.disabled = controlling || !job.can_resume;
             error.textContent = [job.error, job.stop_note, ...(job.warnings || [])].filter(Boolean).join("\n");
@@ -142,7 +181,8 @@ function mount(host) {
             generation = tail.generation;
             offset = tail.offset;
             logs.textContent = (logs.textContent + tail.text).slice(-48000);
-            plot(chart, history.rows);
+            liveRows = history.rows;
+            plot(chart, liveRows);
         } catch (exception) {
             if (exception.name !== "AbortError") error.textContent = exception.message;
         } finally {
@@ -155,6 +195,7 @@ function mount(host) {
         selectionVersion += 1;
         offset = generation = 0;
         logs.textContent = "";
+        liveRows = [];
     };
     for (const [button, action] of [[stop, "stop"], [resume, "resume"]]) {
         button.onclick = async () => {
@@ -167,7 +208,10 @@ function mount(host) {
                     options.headers = { "Content-Type": "application/json" };
                     options.body = JSON.stringify({ checkpoint: checkpoint.value, additional_steps: Number(additional.value) });
                 }
-                await request(`/${selected}/${action}`, options, null);
+                const result = await request(`/${selected}/${action}`, options, null);
+                if (action === "resume") {
+                    await api.queuePrompt(0, { output: result.prompt, workflow: { nodes: [], links: [] } });
+                }
             }
             catch (exception) { error.textContent = exception.message; }
             finally { controlling = false; }

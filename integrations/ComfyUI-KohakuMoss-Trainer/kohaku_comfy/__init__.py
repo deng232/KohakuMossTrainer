@@ -1,1 +1,1 @@
-"""Dependency-free ComfyUI integration support; training stays in its own venv."""
+"""ComfyUI support; trainer dependencies load only when a queued job runs."""

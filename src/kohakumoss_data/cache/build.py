@@ -6,6 +6,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 
 import torch
 
+from kohakumoss_common.events import check_stop, emit
 from kohakumoss_data.cache.settings import record
 from kohakumoss_data.types import EncodeImages, EncodeText, PlanItem
 
@@ -64,7 +65,9 @@ def build_latents(
     check_spec(encode, dataset.cfg.latent_encoder_spec, "LATENT_ENCODER_SPEC")
     cache = dataset.latents
     groups: dict[tuple[int, int], list[tuple[PlanItem, str]]] = {}
+    total = 0
     for item in latent_items(dataset):
+        total += 1
         key = cache.key(dataset.catalog[item.row_id], item)
         if key not in cache.store:
             groups.setdefault(item.target_hw, []).append((item, key))
@@ -73,11 +76,14 @@ def build_latents(
         for target in sorted(groups)
         for i in range(0, len(groups[target]), batch_size)
     ]
+    missing = sum(len(c) for _, c in chunks)
+    emit("caching_latents", total=missing, completed=0, cache_hits=total - missing)
     written = 0
     lf = dataset.cfg.latent_factor
     with ThreadPoolExecutor(max(1, dataset.cfg.num_workers)) as pool:
         ahead = _decode_chunk(pool, dataset, chunks[0][1]) if chunks else []
         for k, (target, chunk) in enumerate(chunks):
+            check_stop()
             images = [future.result() for future in ahead]
             if k + 1 < len(chunks):
                 ahead = _decode_chunk(pool, dataset, chunks[k + 1][1])
@@ -122,8 +128,16 @@ def build_text(
             "set TEXT_ENCODER_ID to the encoder that writes this cache"
         )
     check_spec(encode, cfg.text_encoder_spec, "TEXT_ENCODER_SPEC")
-    todo = [c for c in caption_set(dataset) if cache.key(c) not in cache.store]
+    captions = caption_set(dataset)
+    todo = [c for c in captions if cache.key(c) not in cache.store]
+    emit(
+        "caching_text",
+        total=len(todo),
+        completed=0,
+        cache_hits=len(captions) - len(todo),
+    )
     for i in range(0, len(todo), batch_size):
+        check_stop()
         chunk = todo[i : i + batch_size]
         for caption, emb in zip(chunk, encode(chunk)):
             cache.put(cache.key(caption), emb)

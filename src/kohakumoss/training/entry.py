@@ -82,12 +82,12 @@ from kohakumoss.training.exports import (
 )
 from kohakumoss.training.knobs import check, default_device_type, is_full, run_name
 from kohakumoss.training.layouts import Layout, layout_of
-from kohakumoss.training.memory.optimizers import close_memory
 from kohakumoss.training.state import TrainState
 from kohakumoss.training.step import LayoutTransform
 from kohakumoss.tuning.prewarm import prewarm_devices, release_workspaces, tunes
 from kohakumoss.types.plans import ParallelPlan
 from kohakumoss_common.calls import nothing
+from kohakumoss_common.events import CleanupFailed, check_stop, current, emit
 from kohakumoss_data import DataConfig, MossDataset, build_loader
 from kohakumoss_kernels import compile_setup
 from kohakumoss_kernels.dist import dist_rank, initialized
@@ -209,7 +209,7 @@ def _snapshot(k: dict) -> dict:
 def _start(k: dict, layout: Layout, rank: int, device: torch.device):
     """(output dir, precision, the LyCORIS tuning switch to restore): the run directory
     and its files on rank 0, the per-run process state, the run line."""
-    allocator = configure_allocator(device)
+    allocator = configure_allocator(device) if current() is None else "host"
     compile_pool = compile_setup.apply()
     torch.manual_seed(k["SEED"])
     output_dir = str(Path(k["OUTPUT_DIR"]) / run_name(k))
@@ -313,139 +313,167 @@ def worker(
     k: dict, rank: int = 0, world: int = 1, device=None, feed: RankFeed | None = None
 ) -> TrainState:
     """One rank of a run; `feed`: the rank's end of the encode feed (ENCODE_DEVICES)."""
-    is_main = rank == 0
-    layout = layout_of(k)
-    device = device or _device(k, rank)
-    output_dir, prec, lycoris_tuning = _start(k, layout, rank, device)
-    device_use = build_device_use(device)
-    data_rank = layout.data_rank(rank)
-    data_world = layout.data_world(world)
-    if feed is None:
-        kd, tokens, loader = _data(k, layout, rank, world, device)
-    else:
-        kd, tokens, loader = _fed_data(k, layout, rank, world, device, feed)
-    ranks_meet("data")
-    torch.manual_seed(k["SEED"])
-    streamed = None if feed is None else loader
-    with timed(log, "building model, adapters and encoders"):
-        built = build_model(
-            k, device, prec, world, loader.dataset.text_tokens_max(), streamed
+    built = bundle = writer = logger = ema = None
+    lycoris_tuning = None
+    try:
+        is_main = rank == 0
+        layout = layout_of(k)
+        device = device or _device(k, rank)
+        emit("loading_data")
+        check_stop()
+        output_dir, prec, lycoris_tuning = _start(k, layout, rank, device)
+        device_use = build_device_use(device)
+        data_rank = layout.data_rank(rank)
+        data_world = layout.data_world(world)
+        if feed is None:
+            kd, tokens, loader = _data(k, layout, rank, world, device)
+        else:
+            kd, tokens, loader = _fed_data(k, layout, rank, world, device, feed)
+        ranks_meet("data")
+        torch.manual_seed(k["SEED"])
+        streamed = None if feed is None else loader
+        check_stop()
+        emit("loading_models")
+        with timed(log, "building model, adapters and encoders"):
+            built = build_model(
+                k, device, prec, world, loader.dataset.text_tokens_max(), streamed
+            )
+        log_object(log, "training memory plan", built.plan)
+        for message, fields in placement_lines(k, built, device):
+            log.info(message, **fields)
+        files = export_files(k, fused_qkv(k))
+        log_export_plan(k, files, export_bytes(files, built.trainable, built.backbone))
+        release_cache(device)
+        device_use.log(log, "after build")
+        check_stop()
+        emit("compiling")
+        warm = _prewarm(k, built, prec, device, loader.dataset, device_use)
+        ranks_meet("prewarmed")
+        ctx = RunContext(
+            k, built, layout, device, rank, world, data_world, is_main, output_dir
         )
-    log_object(log, "training memory plan", built.plan)
-    for message, fields in placement_lines(k, built, device):
-        log.info(message, **fields)
-    files = export_files(k, fused_qkv(k))
-    log_export_plan(k, files, export_bytes(files, built.trainable, built.backbone))
-    release_cache(device)
-    device_use.log(log, "after build")
-    warm = _prewarm(k, built, prec, device, loader.dataset, device_use)
-    ranks_meet("prewarmed")
-    ctx = RunContext(
-        k, built, layout, device, rank, world, data_world, is_main, output_dir
-    )
-    engine, objective, names, keep = layout.stages(ctx, prec)
-    if keep is not None:
-        release_nonlocal(built.backbone, keep)
-    torch.manual_seed(k["SEED"] + rank)  # per-rank stream for everything after build
-    hooks = layout.hooks(ctx)
-    init_weights(k, built, output_dir)
-    compile_model(built.backbone, built.plan.compile)
-    normalizer = TokenNormalizer(hooks.reduce, hooks.world_factor)
-    autocast = autocast_factory(prec, device)
-    stage_devices = [torch.device(device.type, i) for i in k["DEVICES"]]
-    share, traced, sources = rank_layout(
-        layout.name, engine, built.backbone.cfg.depth, stage_devices
-    )
-    recorder = build_recorder(k, built)
-    step = build_step(
-        k,
-        built,
-        normalizer,
-        autocast,
-        device,
-        data_rank=data_rank,
-        forward=hooks.forward,
-        recorder=recorder,
-    )
-    bundle, accumulate = build_optim(k, built, device, prec, hooks, keep)
-    if objective is not None:
-        objective.scaler = bundle.scaler
-    ema = build_ema_for(k, built, bundle, names, rank)
-    writes = data_rank == rank and built.feed is None
-    writer = build_writer(k, loader, writes=writes, rank=rank)
-    loader, batcher = _inputs(k, built, device, loader, writer)
-    timeline = build_timeline(device)
-    for enc in (built.text_encoder, built.vae):
-        if hasattr(enc, "set_timeline"):
-            enc.set_timeline(timeline)
-    val_batches = _validation_batches(k, built, device, kd, tokens, rank, world)
-    logger = build_logger(
-        k["LOGGER"],
-        output_dir,
-        run_name(k),
-        k.get("PROJECT", "kohakumoss"),
-        _snapshot(k),
-        is_main,
-    )
-
-    def make_step(sampler: FixedSigma):
-        return build_step(
+        engine, objective, names, keep = layout.stages(ctx, prec)
+        if keep is not None:
+            release_nonlocal(built.backbone, keep)
+        torch.manual_seed(
+            k["SEED"] + rank
+        )  # per-rank stream for everything after build
+        hooks = layout.hooks(ctx)
+        init_weights(k, built, output_dir)
+        emit("compiling")
+        compile_model(built.backbone, built.plan.compile)
+        normalizer = TokenNormalizer(hooks.reduce, hooks.world_factor)
+        autocast = autocast_factory(prec, device)
+        stage_devices = [torch.device(device.type, i) for i in k["DEVICES"]]
+        share, traced, sources = rank_layout(
+            layout.name, engine, built.backbone.cfg.depth, stage_devices
+        )
+        recorder = build_recorder(k, built)
+        step = build_step(
             k,
             built,
             normalizer,
             autocast,
             device,
-            sampler,
             data_rank=data_rank,
-            penalty=False,
+            forward=hooks.forward,
+            recorder=recorder,
+        )
+        bundle, accumulate = build_optim(k, built, device, prec, hooks, keep)
+        if objective is not None:
+            objective.scaler = bundle.scaler
+        ema = build_ema_for(k, built, bundle, names, rank)
+        writes = data_rank == rank and built.feed is None
+        writer = build_writer(k, loader, writes=writes, rank=rank)
+        loader, batcher = _inputs(k, built, device, loader, writer)
+        timeline = build_timeline(device)
+        for enc in (built.text_encoder, built.vae):
+            if hasattr(enc, "set_timeline"):
+                enc.set_timeline(timeline)
+        val_batches = _validation_batches(k, built, device, kd, tokens, rank, world)
+        logger = build_logger(
+            k["LOGGER"],
+            output_dir,
+            run_name(k),
+            k.get("PROJECT", "kohakumoss"),
+            _snapshot(k),
+            is_main,
         )
 
-    rng_devices = stage_devices if layout.stage_rng else warm
-    ckpt = build_checkpoints(k, output_dir, ema, is_main, writer, rank, rng_devices)
-    parts = _parts(ctx, (ema, bundle, step, loader), names)
-    ckpt.after_save = checkpoint_exports(k, layout, built, parts, is_main)
-    rank_cbs = _rank_callbacks(ctx, [hooks.timing, *sources], share, traced)
-    runner = build_callbacks(
-        ctx,
-        bundle,
-        logger,
-        make_step,
-        val_batches,
-        ckpt,
-        parts,
-        reduce_loss=hooks.reduce_loss,
-        autocast=autocast,
-        timeline=timeline,
-        device_use=device_use,
-        rank_callbacks=rank_cbs,
-        recorder=recorder,
-    )
-    state = TrainState()
-    resume = ckpt.resolve(k["RESUME"])
-    if resume is not None:
-        log.info(f"resuming from {resume}")
-        parts.restore(ckpt.load(resume), state)
-        built.engines.after_restore()
-        logger.resume_at(state.step)
-    driver = build_driver(
-        ctx, batcher, normalizer, runner, ckpt, parts, accumulate, engine
-    )
-    log.info(f"training from step {state.step} to {k['STEPS']}")
-    try:
+        def make_step(sampler: FixedSigma):
+            return build_step(
+                k,
+                built,
+                normalizer,
+                autocast,
+                device,
+                sampler,
+                data_rank=data_rank,
+                penalty=False,
+            )
+
+        rng_devices = stage_devices if layout.stage_rng else warm
+        ckpt = build_checkpoints(k, output_dir, ema, is_main, writer, rank, rng_devices)
+        parts = _parts(ctx, (ema, bundle, step, loader), names)
+        ckpt.after_save = checkpoint_exports(k, layout, built, parts, is_main)
+        rank_cbs = _rank_callbacks(ctx, [hooks.timing, *sources], share, traced)
+        runner = build_callbacks(
+            ctx,
+            bundle,
+            logger,
+            make_step,
+            val_batches,
+            ckpt,
+            parts,
+            reduce_loss=hooks.reduce_loss,
+            autocast=autocast,
+            timeline=timeline,
+            device_use=device_use,
+            rank_callbacks=rank_cbs,
+            recorder=recorder,
+        )
+        state = TrainState()
+        resume = ckpt.resolve(k["RESUME"])
+        if resume is not None:
+            log.info(f"resuming from {resume}")
+            parts.restore(ckpt.load(resume), state)
+            built.engines.after_restore()
+            logger.resume_at(state.step)
+        driver = build_driver(
+            ctx, batcher, normalizer, runner, ckpt, parts, accumulate, engine
+        )
+        log.info(f"training from step {state.step} to {k['STEPS']}")
         with bars():
             driver.run(step, loader, bundle, ema, state)
         if writer is not None:
             writer.close()
             writer = None
+        emit("exporting", step=state.step)
         _export(k, layout, built, parts, state, output_dir, is_main)
+        return state
     finally:
-        close_memory(built.engines, bundle)
-        close_quietly(writer)
-        logger.close()
-        restore_lycoris_tuning(lycoris_tuning)
-        window.reopen()
-        clear_caps()
-    return state
+        try:
+            emit("cleaning_up")
+        finally:
+            errors = []
+            for resource in (
+                ema,
+                built.engines if built is not None else None,
+                bundle,
+                writer,
+                logger,
+            ):
+                close = getattr(resource, "close", None)
+                if close is not None:
+                    try:
+                        close()
+                    except Exception as error:
+                        errors.append(str(error))
+            restore_lycoris_tuning(lycoris_tuning)
+            window.reopen()
+            clear_caps()
+            if errors:
+                raise CleanupFailed("Trainer cleanup failed: " + "; ".join(errors))
 
 
 def _rank_callbacks(ctx: RunContext, sources: list, share: float, traced) -> list:
@@ -551,9 +579,10 @@ def checkpoint_exports(k: dict, layout: Layout, built, parts, is_main: bool):
 def close_quietly(writer) -> None:
     """End of a run that raised: flush and stop the online cache writer, logging (not
     raising) its own failure so the run's error is the one reported."""
-    if writer is None:
+    close = getattr(writer, "close", None)
+    if close is None:
         return
     try:
-        writer.close()
+        close()
     except Exception as err:  # noqa: BLE001 - the run's own exception is propagating
         log.warning(f"online cache writer did not close cleanly: {err}")

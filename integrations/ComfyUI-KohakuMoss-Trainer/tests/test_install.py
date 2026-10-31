@@ -1,4 +1,4 @@
-"""Manager's install hook must keep dependencies out of ComfyUI's venv."""
+"""Manager shares ComfyUI Python; native CLI installer remains separate."""
 
 import os
 import runpy
@@ -14,58 +14,61 @@ PLUGIN = Path(__file__).resolve().parents[1]
 
 
 class InstallTests(unittest.TestCase):
-    def test_repository_root_hook_runs_the_same_separate_venv_installer(self):
-        with patch.dict(os.environ, {}, clear=True), patch("subprocess.run") as run:
-            runpy.run_path(str(PLUGIN.parents[1] / "install.py"), run_name="__main__")
-        args, kwargs = run.call_args
-        self.assertEqual(
-            Path(args[0][1]), PLUGIN.parents[1] / "scripts/install/install.sh"
-        )
-        self.assertEqual(kwargs["cwd"], PLUGIN.parents[1])
-        self.assertEqual(
-            kwargs["env"]["KOHAKUMOSS_VENV"], str(PLUGIN.parents[1] / ".venv")
-        )
-        self.assertTrue(kwargs["check"])
+    def test_root_hook_installs_into_current_python_and_pins_gpu_stack(self):
+        from types import SimpleNamespace
 
-    def test_manager_hook_runs_native_installer_in_checkout(self):
-        with patch.dict(os.environ, {}, clear=True), patch("subprocess.run") as run:
-            runpy.run_path(str(PLUGIN / "install.py"), run_name="__main__")
-        args, kwargs = run.call_args
-        self.assertEqual(
-            Path(args[0][1]), PLUGIN.parents[1] / "scripts/install/install.sh"
-        )
-        self.assertEqual(kwargs["cwd"], PLUGIN.parents[1])
-        self.assertTrue(kwargs["check"])
+        distributions = [
+            SimpleNamespace(metadata={"Name": "torch"}, version="2.14.1+cu130"),
+            SimpleNamespace(metadata={"Name": "nvidia-cublas"}, version="13.0"),
+        ]
+        commands = []
 
-    def test_hook_respects_paths_and_propagates_install_failure(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            installer = repo / "scripts/install/install.sh"
-            installer.parent.mkdir(parents=True)
-            installer.touch()
-            venv = repo / "training env"
-            with (
-                patch.dict(
-                    os.environ, KOHAKUMOSS_REPO=str(repo), KOHAKUMOSS_VENV=str(venv)
-                ),
-                patch(
-                    "subprocess.run",
-                    side_effect=subprocess.CalledProcessError(1, "bash"),
-                ) as run,
-            ):
-                with self.assertRaises(subprocess.CalledProcessError):
-                    runpy.run_path(str(PLUGIN / "install.py"), run_name="__main__")
-            self.assertEqual(run.call_args.kwargs["env"]["KOHAKUMOSS_VENV"], str(venv))
-            self.assertEqual(run.call_args.kwargs["cwd"], repo)
+        def run(argv, **kwargs):
+            constraints = Path(argv[argv.index("--constraint") + 1]).read_text()
+            self.assertIn("torch==2.14.1+cu130", constraints)
+            self.assertIn("nvidia-cublas==13.0", constraints)
+            commands.append(argv)
 
-    def test_hook_rejects_installing_into_comfyui_environment(self):
         with (
-            patch.dict(os.environ, KOHAKUMOSS_VENV=sys.prefix),
+            patch("importlib.metadata.version", return_value="2.14.1+cu130"),
+            patch("importlib.metadata.distributions", return_value=distributions),
+            patch("subprocess.run", side_effect=run),
+            patch("importlib.util.find_spec", return_value=None),
+        ):
+            runpy.run_path(str(PLUGIN.parents[1] / "install.py"), run_name="__main__")
+        self.assertEqual(commands[0][:4], [sys.executable, "-m", "pip", "install"])
+        self.assertEqual(commands[0][-1], str(PLUGIN.parents[1]) + "[cuda]")
+
+    def test_uv_uses_current_interpreter_without_creating_venv(self):
+        with (
+            patch("importlib.metadata.version", return_value="2.14.1+cu130"),
+            patch("importlib.util.find_spec", return_value=object()),
             patch("subprocess.run") as run,
         ):
-            with self.assertRaisesRegex(RuntimeError, "separate"):
+            runpy.run_path(str(PLUGIN / "install.py"), run_name="__main__")
+        self.assertEqual(
+            run.call_args.args[0][:7],
+            [sys.executable, "-m", "uv", "pip", "install", "--python", sys.executable],
+        )
+
+    def test_incompatible_torch_is_rejected_without_replacement(self):
+        with (
+            patch("importlib.metadata.version", return_value="2.10.0"),
+            patch("subprocess.run") as run,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "will not replace torch"):
                 runpy.run_path(str(PLUGIN / "install.py"), run_name="__main__")
             run.assert_not_called()
+
+    def test_install_failure_is_propagated(self):
+        with (
+            patch("importlib.metadata.version", return_value="2.14.1"),
+            patch(
+                "subprocess.run", side_effect=subprocess.CalledProcessError(1, "pip")
+            ),
+        ):
+            with self.assertRaises(subprocess.CalledProcessError):
+                runpy.run_path(str(PLUGIN / "install.py"), run_name="__main__")
 
     def run_native_installer(
         self, banner="CUDA Version: 13.0", driver_version=13000, status=0

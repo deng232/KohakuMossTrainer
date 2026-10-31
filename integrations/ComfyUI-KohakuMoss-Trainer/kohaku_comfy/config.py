@@ -198,7 +198,10 @@ def configure_generated(train, settings, output_parent, cache_dir):
         "FINAL_CHECKPOINT": True,
         "KEEP_LAST": settings["keep_last"],
         "LOGGER": "console",
+        "METRICS_EVERY": 1,
         "RESUME": "",
+        "NUM_WORKERS": 0,
+        "DATA_SCAN_WORKERS": 0,
     }
     if settings["max_tokens"]:
         knobs["MAX_TOKENS"] = settings["max_tokens"]

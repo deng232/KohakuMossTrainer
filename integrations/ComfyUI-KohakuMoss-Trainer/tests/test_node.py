@@ -8,7 +8,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 PLUGIN = Path(__file__).resolve().parents[1]
 
@@ -58,7 +58,17 @@ class NodeTests(unittest.TestCase):
         server.PromptServer = types.SimpleNamespace(instance=None)
         aiohttp = types.ModuleType("aiohttp")
         aiohttp.web = types.SimpleNamespace()
+        management = types.SimpleNamespace(
+            unload_all_models=Mock(),
+            soft_empty_cache=Mock(),
+            throw_exception_if_processing_interrupted=Mock(),
+            processing_interrupted=lambda: False,
+        )
+        comfy = types.ModuleType("comfy")
+        comfy.model_management = management
         self.modules = {
+            "comfy": comfy,
+            "comfy.model_management": management,
             "folder_paths": folders,
             "comfy_api": types.ModuleType("comfy_api"),
             "comfy_api.latest": latest,
@@ -113,7 +123,7 @@ class NodeTests(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True):
             runtime = server.get_manager().runtime
         self.assertEqual(runtime.repo, repo)
-        self.assertEqual(runtime.venv, repo / ".venv")
+        self.assertFalse(hasattr(runtime, "venv"))
 
     def test_node_resolves_model_files_and_uses_prompt_identity(self):
         nodes = importlib.import_module("kohaku_test_plugin.nodes")
@@ -244,6 +254,26 @@ class NodeTests(unittest.TestCase):
         )
         self.assertEqual(restored["save_format"], "comfy")
 
+    def test_native_progress_defers_comfy_interrupt_until_driver_can_save(self):
+        module = importlib.import_module("kohaku_test_plugin.server")
+        management = self.modules["comfy"].model_management
+
+        class Interrupt(BaseException):
+            pass
+
+        management.InterruptProcessingException = Interrupt
+        management.processing_interrupted = lambda: False
+        management.interrupt_current_processing = Mock()
+        utils = types.ModuleType("comfy.utils")
+        utils.ProgressBar = Mock()
+        utils.ProgressBar.return_value.update_absolute.side_effect = Interrupt()
+        module.PromptServer.instance = types.SimpleNamespace(send_sync=Mock())
+        with patch.dict(sys.modules, {"comfy.utils": utils}):
+            module.send_event(
+                {"phase": "training", "step": 1, "total": 2, "node_id": "1"}
+            )
+        management.interrupt_current_processing.assert_called_once_with(True)
+
     def test_routes_report_errors_and_reject_cross_origin_requests(self):
         module = importlib.import_module("kohaku_test_plugin.server")
         handlers = {}
@@ -255,10 +285,23 @@ class NodeTests(unittest.TestCase):
             def post(self, path):
                 return lambda fn: handlers.setdefault(("POST", path), fn)
 
+        self_root = self.root
+
         class Manager:
             def get(self, job_id):
                 if job_id == "missing":
                     raise KeyError(job_id)
+                if job_id == "resume":
+                    from kohaku_test_plugin.kohaku_comfy.config import DEFAULTS
+
+                    settings = {
+                        **DEFAULTS,
+                        **{
+                            key: str(self_root / "model.safetensors")
+                            for key in ("transformer", "vae", "text_encoder")
+                        },
+                    }
+                    return {"job_id": job_id, "can_resume": True, "settings": settings}
                 return {"job_id": job_id, "status": "training"}
 
         module.web.json_response = lambda data, status=200: (status, data)
@@ -274,6 +317,20 @@ class NodeTests(unittest.TestCase):
                 asyncio.run(handler(request)),
                 (200, {"job_id": "ok", "status": "training"}),
             )
+            request.match_info["job_id"] = "resume"
+
+            async def json_body():
+                return {"additional_steps": 2, "checkpoint": "latest"}
+
+            request.json = json_body
+            code, body = asyncio.run(
+                handlers["POST", "/kohakumoss/jobs/{job_id}/resume"](request)
+            )
+            self.assertEqual(code, 200)
+            self.assertEqual(
+                body["prompt"]["1"]["inputs"]["start_mode"], "resume_latest"
+            )
+            self.assertEqual(body["prompt"]["1"]["inputs"]["steps"], 2)
             request.match_info["job_id"] = "missing"
             self.assertEqual(asyncio.run(handler(request))[0], 404)
             request.headers["Origin"] = "http://untrusted.invalid"

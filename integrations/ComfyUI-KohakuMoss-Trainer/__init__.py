@@ -1,4 +1,4 @@
-"""One asynchronous KohakuMoss training node; no training dependencies imported here."""
+"""One blocking KohakuMoss training node; no training dependencies imported here."""
 
 from comfy_api.latest import ComfyExtension
 

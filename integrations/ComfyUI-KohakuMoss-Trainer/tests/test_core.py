@@ -2,11 +2,9 @@
 
 import importlib.util
 import io
-import os
 import runpy
 import sys
 import tempfile
-import time
 import types
 import unittest
 from pathlib import Path
@@ -265,320 +263,133 @@ class FileTests(unittest.TestCase):
             self.assertEqual(list(dest.glob("*.partial")), [])
 
 
-FAKE_CLI = r'''
-import json, os, pathlib, subprocess, sys, time
-args = sys.argv[1:]
-if args[0] == "--version":
-    print("fake runtime")
-elif args[0] == "new":
-    weights = pathlib.Path(args[args.index("--weights") + 1])
-    if weights.is_file() and ("--vae" not in args or "--text-encoder" not in args):
-        sys.exit("single-file WEIGHTS requires VAE and TEXT_ENCODER before validation")
-    out = pathlib.Path(args[args.index("--out") + 1])
-    name = args[args.index("--name") + 1]
-    data = args[args.index("--data") + 1]
-    out.write_text('"""Drives scripts/train/moss.py."""\nTEXT_ENCODE = {}\nVAE_ENCODE = {}\nCAPTION = {"template":"tags"}\n'
-                   + "RUN_NAME = " + repr(name) + "\nDATASETS = " + repr([{"path": data}]) + "\n")
-    out.with_name("train_data.py").write_text('"""Drives scripts/data/inspect_data.py."""\nTEXT_ENCODER_KWARGS = {}\nIMAGE_ENCODER_KWARGS = {}\nTEXT_ENCODE = {}\nVAE_ENCODE = {}\n')
-elif args[0] == "check":
-    print("configs checked")
-elif args[0] == "run":
-    script = args[1]
-    print(script, flush=True)
-    if script.endswith("moss.py"):
-        values = {}
-        exec(pathlib.Path(args[args.index("--config") + 1]).read_text(), values)
-        for index, arg in enumerate(args):
-            if arg == "--set":
-                key, value = args[index + 1].split("=", 1)
-                values[key] = int(value) if key == "STEPS" else value
-        root = pathlib.Path(values["OUTPUT_DIR"]) / values["RUN_NAME"]
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "metrics.jsonl").write_text('{"step":1,"loss":0.5,"lr":0.0001}\n')
-        ckpt = root / "checkpoints" / "step_00000001"
-        ckpt.mkdir(parents=True, exist_ok=True)
-        (ckpt / "state.json").write_text('{"step":1}')
-        (ckpt / "trainable.safetensors").write_bytes(b"checkpoint")
-        marker = pathlib.Path(values["DATASETS"][0]["path"]) / "behavior"
-        behavior = marker.read_text() if marker.exists() else "ok"
-        if behavior == "wait":
-            time.sleep(60)
-        if behavior == "descendant":
-            code = "import os,pathlib,signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); pathlib.Path(" + repr(str(marker.parent / "child.pid")) + ").write_text(str(os.getpid())); time.sleep(60)"
-            subprocess.Popen([sys.executable, "-c", code])
-            time.sleep(60)
-        if behavior == "fail":
-            print("CUDA out of memory (test fixture)", flush=True)
-            sys.exit(7)
-        export = root / "export"
-        export.mkdir(exist_ok=True)
-        final = root / "checkpoints" / ("step_%08d" % values["STEPS"])
-        final.mkdir(parents=True, exist_ok=True)
-        (final / "state.json").write_text(json.dumps({"step": values["STEPS"]}))
-        (final / "trainable.safetensors").write_bytes(b"checkpoint")
-        (export / (values["RUN_NAME"] + "-comfy.safetensors")).write_bytes(("export step " + str(values["STEPS"])).encode())
-'''
-
-
-class JobTests(unittest.TestCase):
+class JobTests(ConfigTests):
     def setUp(self):
+        super().setUp()
         from kohaku_comfy.jobs import JobManager
         from kohaku_comfy.runtime import Runtime
 
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        self.repo = self.root / "trainer"
-        self.bin = self.root / "venv" / "bin"
-        self.bin.mkdir(parents=True)
-        for name in ("kohakumoss-config", "kogine", "kohakumoss-doctor"):
-            file = self.bin / name
-            file.write_text(f"#!{sys.executable}\n" + FAKE_CLI)
-            file.chmod(0o755)
-        (self.bin / "python").symlink_to(sys.executable)
-        for script in (
-            "train/moss.py",
-            "data/inspect_data.py",
-            "data/cache_text.py",
-            "data/cache_latents.py",
-        ):
-            p = self.repo / "scripts" / script
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.touch()
-        self.data = self.root / "data"
-        self.data.mkdir()
-        model = self.root / "weights.safetensors"
-        model.write_bytes(b"weights")
-        self.settings = dict(
-            dataset_path=str(self.data),
-            transformer=str(model),
-            text_encoder=str(model),
-            vae=str(model),
-        )
+        self.events = []
         self.runtime = Runtime(
-            self.repo,
-            self.bin.parent,
-            self.root / "workspace",
-            self.root,
-            self.root / "loras",
+            self.root, self.root / "workspace", self.root, self.root / "loras"
         )
-        self.manager = JobManager(self.runtime)
-        self.addCleanup(self.cleanup_job)
+        self.manager = JobManager(self.runtime, self.events.append)
+        check = patch.object(Runtime, "check")
+        check.start()
+        self.addCleanup(check.stop)
+        self.settings = {**self.values, "publish_to_loras": False, "steps": 2}
 
-    def cleanup_job(self):
-        for job in self.manager.list():
-            if job["status"] not in (
-                "completed",
-                "failed",
-                "stopped",
-                "interrupted",
-                "unknown",
-            ):
-                self.manager.stop(job["job_id"])
-                self.wait(job["job_id"], {"stopped", "failed"})
+    def test_submit_blocks_on_library_and_deduplicates(self):
+        def run(runtime, job, resume, observer, cancelled):
+            self.assertEqual(self.manager.active, job["job_id"])
+            self.assertIsNone(resume)
+            observer({"phase": "training", "step": 1, "total": 2, "loss": 0.5})
+            self.assertEqual(self.manager.get(job["job_id"])["metrics"]["step"], 1)
 
-    def wait(self, job_id, statuses):
-        deadline = time.monotonic() + 6
-        while time.monotonic() < deadline:
-            job = self.manager.get(job_id)
-            if job["status"] in statuses:
-                return job
-            time.sleep(0.02)
-        self.fail(f"job did not reach {statuses}: {job}")
+        with patch("kohaku_comfy.jobs.run_library", side_effect=run) as library:
+            job = self.manager.submit(self.settings, "prompt:1")
+            self.assertEqual(job["status"], "completed")
+            self.assertIsNone(self.manager.active)
+            self.assertEqual(
+                self.manager.submit(self.settings, "prompt:1")["job_id"], job["job_id"]
+            )
+            library.assert_called_once()
+        self.assertEqual(self.events[-1]["phase"], "completed")
 
-    def test_background_pipeline_deduplicates_and_publishes(self):
-        job = self.manager.submit(self.settings, "prompt1:node1")
-        self.assertEqual(
-            self.manager.submit(self.settings, "prompt1:node1")["job_id"], job["job_id"]
-        )
-        done = self.wait(job["job_id"], {"completed", "failed"})
-        self.assertEqual(done["status"], "completed", done.get("error"))
-        self.assertTrue(Path(done["published"]).is_file())
-        self.assertEqual(
-            [c["phase"] for c in done["commands"]],
-            [
-                "validating",
-                "validating",
-                "inspecting",
-                "caching_text",
-                "caching_latents",
-                "training",
-            ],
-        )
-        self.assertEqual(done["metrics"]["loss"], 0.5)
-        generate = done["commands"][0]["argv"]
-        self.assertEqual(generate[generate.index("--vae") + 1], self.settings["vae"])
-        self.assertEqual(
-            generate[generate.index("--text-encoder") + 1],
-            self.settings["text_encoder"],
-        )
-        again = self.manager.submit(self.settings, "prompt2:node1")
-        self.assertNotEqual(job["job_id"], again["job_id"])
-        self.wait(again["job_id"], {"completed", "failed"})
-
-    def test_stop_resume_and_single_job_exclusion(self):
-        (self.data / "behavior").write_text("wait")
-        job = self.manager.submit(self.settings, "prompt1:node1")
-        self.wait(job["job_id"], {"training"})
-        deadline = time.monotonic() + 3
-        while (
-            not self.manager.get(job["job_id"])["checkpoints"]
-            and time.monotonic() < deadline
+    def test_library_failure_releases_lease_and_reaches_node(self):
+        with patch(
+            "kohaku_comfy.jobs.run_library", side_effect=RuntimeError("build failed")
         ):
-            time.sleep(0.02)
-        with self.assertRaisesRegex(ValueError, "active|running|busy"):
-            self.manager.submit(self.settings, "prompt2:node1")
-        self.manager.stop(job["job_id"])
-        stopped = self.wait(job["job_id"], {"stopped"})
-        self.assertTrue(stopped["checkpoints"])
-        (self.data / "behavior").write_text("ok")
-        self.manager.resume(job["job_id"])
-        done = self.wait(job["job_id"], {"completed", "failed"})
-        self.assertEqual(done["status"], "completed", done.get("error"))
-        self.assertEqual(done["resume_step"], 1)
-
-    def test_nonzero_exit_fails_and_history_survives_restart(self):
+            with self.assertRaisesRegex(RuntimeError, "build failed"):
+                self.manager.submit(self.settings, "prompt:1")
+        self.assertIsNone(self.manager.active)
+        self.assertEqual(self.manager.list()[0]["status"], "failed")
         from kohaku_comfy.jobs import JobManager
 
-        (self.data / "behavior").write_text("fail")
-        job = self.manager.submit(self.settings, "prompt1:node1")
-        failed = self.wait(job["job_id"], {"failed"})
-        self.assertIn("out of memory", failed["error"])
-        self.assertEqual(failed["exit_code"], 7)
-        reopened = JobManager(self.runtime)
-        self.assertEqual(reopened.get(job["job_id"])["status"], "failed")
+        restored = JobManager(self.runtime)
+        self.assertEqual(restored.list()[0]["error"], "build failed")
+        lease = self.manager._claim()
+        lease.close()
 
-    def test_completed_checkpoint_can_continue_and_only_lora_is_published(self):
-        output = self.runtime.publish_dir / "portraits"
-        job = self.manager.submit(
-            {**self.settings, "output_path": str(output)}, "first:node1"
+    def test_stop_is_cooperative_and_does_not_return_before_cleanup(self):
+        import threading
+
+        started, release, cleaned = (
+            threading.Event(),
+            threading.Event(),
+            threading.Event(),
         )
-        done = self.wait(job["job_id"], {"completed", "failed"})
-        self.assertEqual(done["status"], "completed", done.get("error"))
-        self.assertTrue(done["can_resume"])
-        previous = Path(done["published"])
-        self.assertEqual(previous.parent, output)
-        self.assertEqual(previous.read_bytes(), b"export step 2000")
-        checkpoint = str(Path(done["run_dir"]) / "checkpoints/step_00002000")
-        settings = {
-            "start_mode": "resume_latest",
-            "resume_checkpoint": checkpoint,
-            "steps": 500,
-            "output_path": str(output),
-        }
-        resumed = self.manager.submit(settings, "second:node1")
-        again = self.manager.submit(settings, "second:node1")
-        self.assertEqual(resumed["job_id"], again["job_id"])
-        finished = self.wait(job["job_id"], {"completed", "failed"})
-        self.assertEqual(finished["status"], "completed", finished.get("error"))
-        self.assertEqual(finished["resume_step"], 2000)
-        self.assertEqual(finished["settings"]["steps"], 2500)
-        train = [
-            command
-            for command in finished["commands"]
-            if command["phase"] == "training"
-        ][-1]
-        self.assertIn("STEPS=2500", train["argv"])
-        self.assertIn("RESUME=" + checkpoint, train["argv"])
-        self.assertEqual(Path(finished["published"]).read_bytes(), b"export step 2500")
-        self.assertEqual(previous.read_bytes(), b"export step 2000")
-        self.assertEqual(len(list(output.glob("*.safetensors"))), 2)
-        self.assertFalse((output / "job.json").exists())
-        self.assertTrue(Path(job["run_dir"]).is_relative_to(self.runtime.workspace))
 
-    def test_lora_output_path_cannot_escape_registered_directory(self):
+        def run(runtime, job, resume, observer, cancelled):
+            started.set()
+            release.wait(3)
+            self.assertTrue(cancelled())
+            cleaned.set()
+
+        with patch("kohaku_comfy.jobs.run_library", side_effect=run):
+            thread = threading.Thread(
+                target=lambda: self.manager.submit(self.settings, "prompt:1")
+            )
+            thread.start()
+            self.assertTrue(started.wait(2))
+            job_id = self.manager.active
+            self.manager.stop(job_id)
+            self.assertTrue(thread.is_alive())
+            with self.assertRaisesRegex(ValueError, "active"):
+                self.manager._claim()
+            release.set()
+            thread.join(3)
+            self.assertFalse(thread.is_alive())
+            self.assertTrue(cleaned.is_set())
+            self.assertEqual(self.manager.get(job_id)["status"], "stopped")
+
+    def test_resume_reuses_managed_checkpoint_and_adds_steps(self):
+        def first(runtime, job, resume, observer, cancelled):
+            Path(job["config"]).touch()
+            folder = Path(job["run_dir"]) / "checkpoints/step_00000002"
+            folder.mkdir(parents=True)
+            (folder / "state.json").write_text('{"step": 2}')
+            (folder / "trainable.safetensors").touch()
+
+        with patch("kohaku_comfy.jobs.run_library", side_effect=first):
+            job = self.manager.submit(self.settings, "prompt:1")
+
+        def resumed(runtime, job, resume, observer, cancelled):
+            self.assertEqual(resume.name, "step_00000002")
+            self.assertEqual(job["settings"]["steps"], 5)
+
+        with patch("kohaku_comfy.jobs.run_library", side_effect=resumed):
+            again = self.manager.submit(
+                {
+                    "start_mode": "resume_latest",
+                    "resume_job_id": job["job_id"],
+                    "resume_checkpoint": "latest",
+                    "steps": 3,
+                },
+                "next:1",
+            )
+        self.assertEqual(again["job_id"], job["job_id"])
+        self.assertEqual(again["status"], "completed")
+        self.assertEqual(again["resume_step"], 2)
+
+    def test_failed_cleanup_retains_gpu_exclusion(self):
+        from kohakumoss_common.events import CleanupFailed
+
+        with patch(
+            "kohaku_comfy.jobs.run_library", side_effect=CleanupFailed("worker alive")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "worker alive"):
+                self.manager.submit(self.settings, "prompt:1")
+        self.assertEqual(self.manager.list()[0]["status"], "unknown")
+        with self.assertRaisesRegex(ValueError, "unknown"):
+            self.manager._claim()
+        self.manager.orphan_lease.close()
+
+    def test_output_path_cannot_escape_loras(self):
         with self.assertRaises(ValueError):
             self.manager.submit(
-                {**self.settings, "output_path": str(self.root / "outside")},
-                "first:node1",
+                {**self.settings, "output_path": "/outside"}, "prompt:1"
             )
-
-    def test_restart_marks_live_worker_unknown_and_blocks_new_jobs(self):
-        from kohaku_comfy.jobs import JobManager
-
-        (self.data / "behavior").write_text("wait")
-        job = self.manager.submit(self.settings, "prompt1:node1")
-        self.wait(job["job_id"], {"training"})
-        deadline = time.monotonic() + 5
-        while (
-            not self.manager.get(job["job_id"]).get("process")
-            and time.monotonic() < deadline
-        ):
-            time.sleep(0.01)
-        self.assertIsNotNone(self.manager.get(job["job_id"]).get("process"))
-        reopened = JobManager(self.runtime)
-        self.assertEqual(reopened.get(job["job_id"])["status"], "unknown")
-        with self.assertRaisesRegex(ValueError, "active|unknown"):
-            reopened.submit(self.settings, "prompt2:node1")
-        with self.assertRaises(ValueError):
-            reopened.stop(job["job_id"])
-        self.manager.stop(job["job_id"])
-        self.wait(job["job_id"], {"stopped"})
-
-    def test_off_policy_skips_cache_commands(self):
-        job = self.manager.submit(
-            {**self.settings, "cache_policy": "off"}, "prompt1:node1"
-        )
-        done = self.wait(job["job_id"], {"completed", "failed"})
-        self.assertEqual(done["status"], "completed", done.get("error"))
-        self.assertEqual(
-            [c["phase"] for c in done["commands"]],
-            ["validating", "validating", "inspecting", "training"],
-        )
-
-    def test_monitor_failure_reaps_descendant_that_ignores_sigterm(self):
-        import signal
-
-        from kohaku_comfy import jobs
-
-        (self.data / "behavior").write_text("descendant")
-        original = self.manager._update
-        groups = []
-
-        def failing_monitor(job, **values):
-            if values.get("process"):
-                groups.append(values["process"]["pgid"])
-            if "log_generation" in values and (self.data / "child.pid").exists():
-                raise OSError("simulated monitoring failure")
-            return original(job, **values)
-
-        try:
-            with (
-                patch.object(jobs, "LOG_BYTES", 1),
-                patch.object(jobs, "STOP_TIMEOUT", 0.2),
-                patch.object(self.manager, "_update", side_effect=failing_monitor),
-            ):
-                job = self.manager.submit(self.settings, "prompt1:node1")
-                done = self.wait(job["job_id"], {"failed"})
-                self.assertIn("monitoring failure", done["error"])
-                self.assertFalse(
-                    jobs.group_alive(groups[-1]),
-                    "loader descendant survived after GPU lease release",
-                )
-        finally:
-            for group in groups:
-                try:
-                    os.killpg(group, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-
-    def test_unconfirmed_group_exit_retains_cross_process_gpu_lock(self):
-        from kohaku_comfy import jobs
-
-        try:
-            with (
-                patch.object(jobs, "group_alive", return_value=True),
-                patch.object(jobs, "STOP_TIMEOUT", 0),
-                patch.object(jobs, "KILL_TIMEOUT", 0),
-            ):
-                job = self.manager.submit(self.settings, "prompt1:node1")
-                done = self.wait(job["job_id"], {"unknown"})
-                self.assertIn("exclusion is retained", done["error"])
-            reopened = jobs.JobManager(self.runtime)
-            with self.assertRaisesRegex(ValueError, "busy"):
-                reopened.submit(self.settings, "prompt2:node1")
-        finally:
-            self.manager.orphan_lease.close()
 
 
 if __name__ == "__main__":

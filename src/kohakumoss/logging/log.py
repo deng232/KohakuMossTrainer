@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from tqdm.auto import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
+from kohakumoss_common.events import current, emit
 from kohakumoss_common.log import (
     ROOTS,
     Formatter,
@@ -81,6 +82,9 @@ def bar(iterable=None, total: int | None = None, desc: str = "", enabled=True, *
 @contextmanager
 def bars():
     """Project log lines go through tqdm.write while bars are open."""
+    if current() is not None:
+        yield
+        return
     with logging_redirect_tqdm(loggers=[logging.getLogger(name) for name in ROOTS]):
         yield
 
@@ -90,6 +94,7 @@ def timed(log: logging.Logger, what: str):
     """Log `what ...` on entry and `what: done` with `secs` and the fields the body put
     into the yielded dict on exit (nothing on an exception)."""
     fields: dict = {}
+    emit("preparing", detail=what)
     log.info(f"{what} ...", stacklevel=3)
     start = time.perf_counter()
     yield fields

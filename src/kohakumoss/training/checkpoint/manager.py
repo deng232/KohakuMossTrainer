@@ -25,6 +25,7 @@ from kohakumoss.training.checkpoint.io import (
 )
 from kohakumoss.training.checkpoint.stream import save_stream
 from kohakumoss_common.calls import nothing
+from kohakumoss_common.events import emit
 
 STEP_DIR = "step_{:08d}"
 STEP_NAME = re.compile(r"step_\d{8}")
@@ -83,6 +84,7 @@ class CheckpointManager:
     def save(self, step: int, parts: dict) -> Path | None:
         """Every rank: its RNG file (and its optimiser shard, `parts["optim_rank"]`);
         rank 0: the shared parts, then the rename."""
+        emit("saving_checkpoint", step=step)
         self.before_save()
         partial = self.root / (STEP_DIR.format(step) + PARTIAL)
         self._clear(partial)

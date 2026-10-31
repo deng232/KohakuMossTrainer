@@ -50,6 +50,7 @@ from kohakumoss.training.optim.optimizers.factory import STATE_BYTES
 from kohakumoss.training.weights import component, stored_dit_precision
 from kohakumoss.types.plans import PrecisionConfig
 from kohakumoss.weights import DIT, TEXT, VAE
+from kohakumoss_common.events import CleanupFailed
 from kohakumoss_common.hostmem import trim_heap
 from kohakumoss_kernels.hardware.current import rng_kept
 
@@ -269,19 +270,26 @@ def build_model(
         trainable_base=full,
         keep_fp32=prec.keep_fp32,
     )
-    if auto_rows:
-        engines.reports["auto"] = auto_rows
-    trainable = build_trainable(k, backbone, prec, device)
-    apply_param_dtypes(backbone, prec, _ids(trainable), k["OPTIMIZER"] == "adamw16")
-    engines.exclude_params(trainable.trainable_params())
-    backbone.bind_ops(OpSet.resolve(device, prec.compute, k["KERNELS"]))
-    reserve = step_reserve(k, plan)
-    if feed is None:
-        vae, text, embeds = build_encoders(k, device, prec, reserve, plan)
-    else:
-        vae, text, embeds = fed_encoders(k, device, reserve, plan, feed)
-    trim_heap()
-    return Built(backbone, trainable, plan, engines, vae, text, embeds, feed)
+    try:
+        if auto_rows:
+            engines.reports["auto"] = auto_rows
+        trainable = build_trainable(k, backbone, prec, device)
+        apply_param_dtypes(backbone, prec, _ids(trainable), k["OPTIMIZER"] == "adamw16")
+        engines.exclude_params(trainable.trainable_params())
+        backbone.bind_ops(OpSet.resolve(device, prec.compute, k["KERNELS"]))
+        reserve = step_reserve(k, plan)
+        if feed is None:
+            vae, text, embeds = build_encoders(k, device, prec, reserve, plan)
+        else:
+            vae, text, embeds = fed_encoders(k, device, reserve, plan, feed)
+        trim_heap()
+        return Built(backbone, trainable, plan, engines, vae, text, embeds, feed)
+    except BaseException:
+        try:
+            engines.close()
+        except Exception as error:
+            raise CleanupFailed(f"Partial model cleanup failed: {error}") from error
+        raise
 
 
 def component_path(k: dict, which: str) -> str:
