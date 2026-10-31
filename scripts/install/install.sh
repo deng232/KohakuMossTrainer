@@ -12,7 +12,18 @@ if command -v nvidia-smi >/dev/null 2>&1; then
   # "CUDA Version: X.Y", or "CUDA UMD Version: X.Y" on newer drivers
   read -r major minor <<< "$(nvidia-smi | sed -n 's/.*CUDA \(UMD \)\{0,1\}Version: *\([0-9]*\)\.\([0-9]*\).*/\2 \3/p' | head -1)"
   if [[ ! "$major" =~ ^[0-9]+$ || ! "$minor" =~ ^[0-9]+$ ]]; then
-    echo "could not read the CUDA version from nvidia-smi; install by hand: docs/guides/install.md#manual-install" >&2; exit 1
+    # Some container NVML installations omit CUDA from the nvidia-smi header.
+    read -r major minor <<< "$("$(command -v python3 || command -v python)" -c '
+import ctypes
+version = ctypes.c_int()
+status = ctypes.CDLL("libcuda.so.1").cuDriverGetVersion(ctypes.byref(version))
+if status != 0 or version.value <= 0:
+    raise SystemExit(f"CUDA driver version query failed: status={status}, version={version.value}")
+print(version.value // 1000, version.value % 1000 // 10)
+')"
+  fi
+  if [[ ! "$major" =~ ^[0-9]+$ || ! "$minor" =~ ^[0-9]+$ ]]; then
+    echo "could not read the CUDA version from nvidia-smi or libcuda; check the container GPU driver mounts" >&2; exit 1
   fi
   ver=$((major * 100 + minor))
   if [ "$ver" -ge 1300 ]; then tag=cu130

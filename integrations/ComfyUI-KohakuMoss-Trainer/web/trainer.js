@@ -183,6 +183,9 @@ app.registerExtension({
     },
     nodeCreated(node) {
         if (node.comfyClass !== "KohakuMossTrainer") return;
+        const learningRate = node.widgets.find(w => w.name === "learning_rate");
+        // The frontend can override schema rounding with its global float settings.
+        if (learningRate) Object.assign(learningRate.options, { precision: 12, round: false });
         const mode = node.widgets.find(w => w.name === "start_mode");
         const checkpoint = node.widgets.find(w => w.name === "resume_checkpoint");
         if (!mode || !checkpoint) return;

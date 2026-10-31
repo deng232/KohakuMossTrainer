@@ -165,6 +165,31 @@ class NodeTests(unittest.TestCase):
             "KOHAKU_CHECKPOINT_FOLDER",
         )
 
+    def test_learning_rate_keeps_small_decimal_values(self):
+        nodes = importlib.import_module("kohaku_test_plugin.nodes")
+        field = next(
+            field
+            for field in nodes.KohakuMossTrainer.define_schema().inputs
+            if field.id == "learning_rate"
+        )
+        self.assertEqual(field.default, 0.0001)
+        self.assertIs(field.round, False)
+        self.assertEqual(field.step, 0.000001)
+        with patch.object(nodes, "get_manager") as manager:
+            manager.return_value.submit.return_value = {
+                "job_id": "learning-rate",
+                "status": "created",
+            }
+            nodes.KohakuMossTrainer.execute(
+                dataset_path=str(self.root),
+                transformer="model.safetensors",
+                text_encoder="model.safetensors",
+                vae="model.safetensors",
+                learning_rate=0.0001,
+            )
+            settings = manager.return_value.submit.call_args.args[0]
+            self.assertEqual(settings["learning_rate"], 0.0001)
+
     def test_all_advanced_fields_have_hover_explanations(self):
         nodes = importlib.import_module("kohaku_test_plugin.nodes")
         for field in nodes.KohakuMossTrainer.define_schema().inputs:

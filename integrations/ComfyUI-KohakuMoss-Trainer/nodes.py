@@ -147,6 +147,8 @@ class KohakuMossTrainer(io.ComfyNode):
                     common.update(
                         display_name="Max target area (MP)", step=0.05, round=0.000001
                     )
+                elif name == "learning_rate":
+                    common.update(step=0.000001, round=False)
                 inputs.append(io.Float.Input(name, min=low, max=high, **common))
             else:
                 inputs.append(io.String.Input(name, **common))

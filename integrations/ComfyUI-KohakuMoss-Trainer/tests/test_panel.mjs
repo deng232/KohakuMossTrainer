@@ -78,3 +78,17 @@ test("new mode hides the checkpoint widget and restored resume mode shows it", (
     assert.equal(checkpoint.hidden, true);
     assert.equal(checkpoint.value, "saved/path");
 });
+
+test("learning rate stays editable below the frontend's default rounding precision", () => {
+    let extension;
+    const source = readFileSync(new URL("../web/trainer.js", import.meta.url), "utf8").replace(/^import .*;$/gm, "");
+    vm.runInNewContext(source, { app: { registerExtension(value) { extension = value; } } });
+    const learningRate = { name: "learning_rate", value: 0.0001, options: { precision: 1, round: 0.1 } };
+    extension.nodeCreated({ comfyClass: "KohakuMossTrainer", widgets: [learningRate] });
+    assert.equal(learningRate.options.round, false);
+    assert.equal(learningRate.options.precision, 12);
+    for (const value of [0.0001, 0.00005, 1e-12]) {
+        assert.equal(Number(value.toFixed(learningRate.options.precision)), value);
+    }
+    assert.equal(learningRate.value, 0.0001);
+});
