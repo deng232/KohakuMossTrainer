@@ -1,6 +1,7 @@
 # KohakuMoss Training for ComfyUI
 
-Two workflow nodes: **KohakuMoss Training** and **KohakuMoss uPlot Monitor**.
+Three workflow nodes: **KohakuMoss Folder Loader**, **KohakuMoss Training**
+and **KohakuMoss uPlot Monitor**.
 Kohaku runs as a Python library in ComfyUI's existing prompt worker. Training
 occupies the queue until it finishes; the browser receives live metrics while
 the monitor's backend is still waiting for the training output.
@@ -36,7 +37,7 @@ can run pip subprocesses; training never launches another training process.
 ## Workflow
 
 Manager's "Used In Workflow" is a workflow/package usage view, not a backend
-node-registration check. Load the example workflow or add the two KohakuMoss
+node-registration check. Load the example workflow or add the KohakuMoss
 nodes before checking it. If the nodes are searchable but the usage view still
 shows zero, Manager may lack this Git repository's node-to-package mapping or
 have stale cached metadata. The root `node_list.json` supplies explicit node
@@ -44,10 +45,12 @@ names for Manager's scanner; it does not itself update the central Manager
 database. If the nodes are not searchable, inspect ComfyUI startup output for
 an import/installation failure instead.
 
-Load [examples/two-node-workflow.json](../../examples/two-node-workflow.json).
+Load [examples/folder-training-workflow.json](../../examples/folder-training-workflow.json).
 Set `WEIGHTS` to your ComfyUI models folder or a supported HF weights root,
-choose the transformer/text encoder/VAE, and set `dataset_path` and `source`.
-Use **Upload dataset folder** on the Training node to open the browser's local
+choose the transformer/text encoder/VAE, and connect Folder Loader → Training
+→ Monitor. Set `dataset_path` on Folder Loader.
+Use **Choose dataset folder (upload)** directly below `dataset_path` on the
+Folder Loader node to open the browser's local
 folder picker, like Load Image's upload action. Images and `.txt`, `.caption`,
 `.json`, `.jsonl` sidecars are uploaded with their subdirectory structure to
 `ComfyUI/input/kohakumoss_datasets/<unique-id>/`. Other file types are skipped.
@@ -57,21 +60,33 @@ limited to 100 MiB each. Failed/cancelled uploads can leave earlier completed
 files in their isolated folder; no existing dataset is overwritten.
 
 Target area uses **MP**: `1.0` means 1,000,000 pixels. The native `TARGET_AREA`
-knob still receives integer pixel area; an explicit `advanced_json` value takes
-precedence. Older graph workflows with a pixel-valued widget convert to MP on
+knob still receives integer pixel area. Older graph workflows with a pixel-valued widget convert to MP on
 load; older API prompts should use `target_megapixels`.
 
-The model dropdowns respect ComfyUI's additional model search paths. Absolute
-component paths and other native knobs can be supplied through `advanced_json`.
+The model dropdowns list explicit files from ComfyUI's model search paths.
+Select transformer, text encoder and VAE files before queueing; automatic model
+lookup and the VARIANT selector have been removed. Base/sft is determined by
+the transformer file you select. Old automatic selections must be replaced.
 
-For a flat folder, choose `source=folder`; for Kohya-style repeat directories,
-choose `kohya`. An optional nonempty `DATASETS` JSON list replaces the dataset
-widget with native multi-source entries. Empty `DATASETS` uses the widgets.
+Folder Loader recursively reads images and same-name caption sidecars (for
+example `1.png` and `1.txt`). The complete text is used as the caption:
+tags, natural language and mixed text all work, without tag shuffling or
+dropout. No `source`, `CAPTION` or `DATASETS` widget is needed. Dataset and
+caption settings come from the loader and take precedence over advanced JSON.
+Numeric directory prefixes such as `10_character` are ordinary folder names;
+this loader does not apply Kohya repeat weights or add folder names to captions.
 Native cache storage is the only dataset cache used by this extension.
+Cache files use the native default `<dataset_path>/cache`; no cache-directory
+widget is needed.
+
+Older two-node workflows require adding Folder Loader and connecting its dataset
+output. Old Training widget values are migrated, but dataset paths must be set
+on the loader. The updated example includes all three nodes.
 
 Connect `training_job` to the monitor and Queue Prompt. Training alone is also
 an output node and can be queued. Every explicit queue runs again, even with
-unchanged settings; `run_token` is an optional manual workflow marker. Loading
+unchanged settings; `run_token` is a legacy workflow marker with no effect on
+training or caching. Loading
 or refreshing the page does not queue a run.
 
 The monitor shows actual metric steps rather than interpolated progress.
@@ -81,10 +96,16 @@ Loss, LR and available native VRAM metrics are drawn with local uPlot 1.6.31,
 at most twice per second. Missing/non-finite metric values appear as gaps.
 Smoothing affects only the displayed loss, not the native history.
 
-JSON widgets map to native dictionaries. `advanced_json` overrides widget
-knobs, then host constraints override both: one selected CUDA GPU,
-`PARALLEL=none`, `ENCODE_DEVICES=()`, `NUM_WORKERS=0`, `DATA_SCAN_WORKERS=1`,
-native driver and the live logger. A separate text-encoder GPU is rejected.
+## Advanced JSON
+
+JSON widgets such as `SCHEDULE` and encoder settings map to native dictionaries.
+The `advanced_json` control is hidden and contributes no overrides (`{}`).
+Old workflow override values are discarded on load. Training uses the exposed
+widgets and native defaults, followed by Folder Loader settings and enforced
+single-GPU host constraints.
+
+The native parameter list and defaults are in [the training script](../../scripts/train/moss.py);
+behavior is described in [the training documentation](../concepts/training.md).
 Native validation still decides which training/model/cache combinations work.
 
 Offline cache passes run sequentially in the prompt worker and report written
@@ -96,7 +117,19 @@ Online/off cache modes continue through the native training path.
 Use native `SAVE_EVERY`, `SAVE_MINUTES`, `KEEP_LAST` and `FINAL_CHECKPOINT` for
 checkpoints, and `SAVE_FORMAT=comfy` for ComfyUI exports. `RESUME=latest` applies
 when you queue a new task using the same output directory/run name. It is not
-an in-memory continuation. Increasing steps on resume may change the native
+an in-memory continuation.
+
+**Browse server checkpoints**, below RESUME, opens an in-app folder dialog
+listing directories on the **ComfyUI server**, starting at ComfyUI's output
+directory. Navigate into a run's `checkpoints/step_XXXXXXXX` folder and choose
+**Use this checkpoint**. The folder must contain `state.json` and
+`trainable.safetensors`; partial directories are hidden. The action fills in
+RESUME without queueing training. No local files are selected or uploaded.
+Browsing is limited to ComfyUI's output directory, including symlink targets.
+For checkpoints elsewhere, enter their server path manually. Empty RESUME
+starts fresh; `latest` uses this run's newest native checkpoint.
+
+Increasing steps on resume may change the native
 scheduler curve. Existing native run-file rotation rules remain in effect.
 
 There are no Pause, Continue, Stop or Extend controls. ComfyUI Interrupt is
@@ -107,7 +140,7 @@ training running. Other ordinary queued GPU workflows wait for training.
 
 The frontend associates the monitor with the training node through its graph
 link, not through an upstream runtime output. A persistent workflow identifier,
-the graph node ID and a per-execution `job_id` distinguish runs. Put the two
+the graph node ID and a per-execution `job_id` distinguish runs. Put the training and monitor
 nodes in the main workflow graph; subgraph execution IDs have not been validated.
 
 Events: `kohakumoss.job_started`, `kohakumoss.metrics`, `kohakumoss.status`.
@@ -116,6 +149,7 @@ snapshot; metric events also include `step` and `metrics`.
 
 Read-only routes, under ComfyUI's existing server and access policy:
 
+- `GET /kohakumoss/checkpoints?path=...` (server output folder browser)
 - `GET /kohakumoss/jobs?origin_node_id=...&workflow_id=...`
 - `GET /kohakumoss/jobs/{job_id}`
 - `GET /kohakumoss/jobs/{job_id}/history`

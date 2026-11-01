@@ -42,6 +42,12 @@ def configure(settings):
     register()
     root = repo_root()
     own = resolve_models(overrides(settings), folder_paths.get_full_path)
+    dataset = settings.get("dataset")
+    if not isinstance(dataset, str) or not dataset.strip():
+        raise ValueError("Connect a KohakuMoss Folder Loader to the dataset input")
+    # The loader owns dataset and caption semantics, including advanced overrides.
+    own["DATASETS"] = [{"source": "folder", "path": dataset, "txt_as": "nl"}]
+    own["CAPTION"] = {"template": "nl"}
     device = torch.device("cuda", own["DEVICES"][0])
     if not torch.cuda.is_available() or device.index >= torch.cuda.device_count():
         raise ValueError(f"Training GPU {device} is not available")
@@ -51,8 +57,8 @@ def configure(settings):
         )
     choice = TrainChoice(
         weights=own.get("WEIGHTS", ""),
-        data=settings.get("dataset_path", ""),
-        source=settings.get("source", "kohya"),
+        data=dataset,
+        source="folder_nl",
         algo=(
             own.get("ALGO")
             if own.get("ALGO") in ("lora", "loha", "lokr", "oft", "full")

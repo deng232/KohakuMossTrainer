@@ -8,9 +8,9 @@ The root `install.py` installs this checkout and its CUDA dependencies into
 ComfyUI's existing Python environment; no separate venv is needed. It preserves
 the installed Torch stack and rejects incompatible Torch versions.
 
-Restart ComfyUI, then load [the two-node workflow](examples/two-node-workflow.json).
+Restart ComfyUI, then load [the folder training workflow](examples/folder-training-workflow.json).
 Set your model and dataset paths before queuing training.
-The Training node includes a local dataset-folder upload button (images and
+The Folder Loader node includes a local dataset-folder upload button (images and
 captions), and target area is entered in megapixels (MP).
 See [the ComfyUI guide](docs/guides/comfyui.md) for configuration and limitations.
 Real ComfyUI/GPU acceptance remains pending; see [validation](docs/guides/comfyui-validation.md).

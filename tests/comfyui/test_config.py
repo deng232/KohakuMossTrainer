@@ -6,6 +6,13 @@ from kohaku_comfy.config import overrides, resolve_models
 
 
 class ConfigTests(unittest.TestCase):
+    def test_empty_caption_preserves_source_preset_and_explicit_caption_overrides(self):
+        self.assertNotIn("CAPTION", overrides({"source": "folder_nl", "CAPTION": "{}"}))
+        self.assertEqual(
+            overrides({"CAPTION": '{"template":"tags","shuffle":false}'})["CAPTION"],
+            {"template": "tags", "shuffle": False},
+        )
+
     def test_megapixels_convert_to_native_area_and_explicit_knobs_win(self):
         self.assertEqual(
             overrides({"target_megapixels": 1.0})["TARGET_AREA"], 1_000_000
@@ -69,20 +76,22 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(got["WEIGHTS"], str(Path(directory).resolve()))
             self.assertEqual(got["TEXT_ENCODE"], {"precision": "int8"})
 
-    def test_discovery_uses_extra_model_paths(self):
-        def find(folder, name):
-            self.assertEqual((folder, name), ("diffusion_models", "moss.safetensors"))
-            return "/extra/models/moss.safetensors"
-
-        got = resolve_models(
-            {
-                "TRANSFORMER": "moss.safetensors",
-                "TEXT_ENCODER": "/other/te.safetensors",
-            },
-            find,
-        )
-        self.assertEqual(got["TRANSFORMER"], "/extra/models/moss.safetensors")
-        self.assertEqual(got["TEXT_ENCODER"], "/other/te.safetensors")
+    def test_discovery_uses_explicit_files_and_extra_model_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            model = Path(directory) / "model.safetensors"
+            model.touch()
+            values = dict.fromkeys(("TRANSFORMER", "TEXT_ENCODER", "VAE"), model.name)
+            got = resolve_models(
+                {**values, "VARIANT": "sft"}, lambda folder, name: str(model)
+            )
+            self.assertNotIn("VARIANT", got)
+            for key in values:
+                self.assertEqual(got[key], str(model.resolve()))
+            for invalid in ("", "(auto)", "missing.safetensors", None):
+                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                    resolve_models(
+                        {**got, "TRANSFORMER": invalid}, lambda folder, name: None
+                    )
 
     def test_empty_optional_dataset_list_keeps_starter_dataset(self):
         self.assertNotIn("DATASETS", overrides({"DATASETS": "[]"}))

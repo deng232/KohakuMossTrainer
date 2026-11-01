@@ -1,12 +1,44 @@
 {
-  "last_node_id": 2,
-  "last_link_id": 1,
+  "last_node_id": 3,
+  "last_link_id": 2,
   "nodes": [
+    {
+      "id": 3,
+      "type": "KohakuMossFolderLoader",
+      "pos": [
+        30,
+        50
+      ],
+      "size": [
+        330,
+        140
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "dataset",
+          "type": "MOSS_DATASET",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KohakuMossFolderLoader"
+      },
+      "widgets_values": [
+        ""
+      ]
+    },
     {
       "id": 1,
       "type": "KohakuMossTraining",
       "pos": [
-        50,
+        400,
         50
       ],
       "size": [
@@ -14,9 +46,15 @@
         1500
       ],
       "flags": {},
-      "order": 0,
+      "order": 1,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "name": "dataset",
+          "type": "MOSS_DATASET",
+          "link": 2
+        }
+      ],
       "outputs": [
         {
           "name": "training_job",
@@ -32,17 +70,12 @@
       },
       "widgets_values": [
         "models",
-        "(auto)",
-        "(auto)",
-        "(auto)",
-        "base",
-        "",
-        "kohya",
+        "SELECT_A_MODEL_FILE",
+        "SELECT_A_MODEL_FILE",
+        "SELECT_A_MODEL_FILE",
         1.0,
-        "{\"template\":\"tags\"}",
         "offline",
         "offline",
-        "",
         "bf16",
         "{}",
         "{}",
@@ -70,16 +103,14 @@
         "my-lora",
         "output/kohakumoss",
         "",
-        0,
-        "{\"SAMPLE_EVERY\":0}",
-        "[]"
+        0
       ]
     },
     {
       "id": 2,
       "type": "KohakuMossMonitor",
       "pos": [
-        600,
+        950,
         50
       ],
       "size": [
@@ -87,7 +118,7 @@
         500
       ],
       "flags": {},
-      "order": 1,
+      "order": 2,
       "mode": 0,
       "inputs": [
         {
@@ -116,6 +147,14 @@
       2,
       0,
       "TRAINING_JOB"
+    ],
+    [
+      2,
+      3,
+      0,
+      1,
+      0,
+      "MOSS_DATASET"
     ]
   ],
   "groups": [],

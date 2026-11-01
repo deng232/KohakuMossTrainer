@@ -3,17 +3,12 @@
     "class_type": "KohakuMossTraining",
     "inputs": {
       "WEIGHTS": "models",
-      "TRANSFORMER": "(auto)",
-      "TEXT_ENCODER": "(auto)",
-      "VAE": "(auto)",
-      "VARIANT": "base",
-      "dataset_path": "",
-      "source": "kohya",
+      "TRANSFORMER": "SELECT_A_MODEL_FILE",
+      "TEXT_ENCODER": "SELECT_A_MODEL_FILE",
+      "VAE": "SELECT_A_MODEL_FILE",
       "target_megapixels": 1.0,
-      "CAPTION": "{\"template\":\"tags\"}",
       "LATENT_CACHE": "offline",
       "TEXT_CACHE": "offline",
-      "CACHE_DIR": "",
       "CACHE_DTYPE": "bf16",
       "TEXT_ENCODE": "{}",
       "VAE_ENCODE": "{}",
@@ -42,8 +37,10 @@
       "OUTPUT_DIR": "output/kohakumoss",
       "RESUME": "",
       "run_token": 0,
-      "advanced_json": "{\"SAMPLE_EVERY\":0}",
-      "DATASETS": "[]"
+      "dataset": [
+        "3",
+        0
+      ]
     }
   },
   "2": {
@@ -57,6 +54,12 @@
       "show_vram": true,
       "smoothing": 1,
       "history_points": 10000
+    }
+  },
+  "3": {
+    "class_type": "KohakuMossFolderLoader",
+    "inputs": {
+      "dataset_path": ""
     }
   }
 }

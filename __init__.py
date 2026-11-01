@@ -1,4 +1,4 @@
-"""ComfyUI entry point for KohakuMoss's two-node training integration."""
+"""ComfyUI entry point for KohakuMoss's folder-based training integration."""
 
 import logging
 

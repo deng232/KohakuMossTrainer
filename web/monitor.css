@@ -14,3 +14,20 @@
 .kohakumoss-monitor [role="status"] { min-height: 40px; overflow-wrap: anywhere; }
 .kohakumoss-chart { width: 100%; }
 .kohakumoss-monitor .u-legend { color: #e4e8ef; }
+
+
+.kohakumoss-checkpoints {
+  width: min(600px, 85vw);
+  max-height: 80vh;
+  overflow: auto;
+  background: var(--comfy-menu-bg, #20242b);
+  color: var(--input-text, #e4e8ef);
+  border: 1px solid #888;
+  border-radius: 8px;
+  padding: 18px;
+  font: 14px/1.5 system-ui, sans-serif;
+}
+.kohakumoss-checkpoints div { overflow-wrap: anywhere; margin-bottom: 10px; }
+.kohakumoss-checkpoints button { margin: 4px; padding: 6px 10px; cursor: pointer; }
+.kohakumoss-checkpoints div > button { display: block; }
+.kohakumoss-checkpoints::backdrop { background: #0008; }

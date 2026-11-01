@@ -20,7 +20,6 @@ HOST = {
     "LOGGER": "comfyui_live",
     "DRIVER": "native",
 }
-COMPONENT_DEFAULT = "(auto)"
 MODEL_FOLDERS = {
     "TRANSFORMER": "diffusion_models",
     "TEXT_ENCODER": "text_encoders",
@@ -67,9 +66,8 @@ def overrides(settings):
             values[name] = json_value(values[name], kind, name)
     if values.get("DATASETS") == []:
         values.pop("DATASETS")
-    for name in ("TRANSFORMER", "TEXT_ENCODER", "VAE"):
-        if values.get(name) == COMPONENT_DEFAULT:
-            values[name] = ""
+    if values.get("CAPTION") == {}:
+        values.pop("CAPTION")
     for name in ("WEIGHTS", "OUTPUT_DIR", "CACHE_DIR"):
         if values.get(name):
             values[name] = str(Path(values[name]).expanduser().resolve())
@@ -98,10 +96,18 @@ def overrides(settings):
 def resolve_models(values, find_file):
     """Resolve discovered filenames through ComfyUI's extra model paths too."""
     values = dict(values)
+    values.pop("VARIANT", None)
     for name, folder in MODEL_FOLDERS.items():
-        value = values.get(name, "")
-        if value and not Path(value).is_absolute():
+        value = values.get(name)
+        if not isinstance(value, str) or not value.strip() or value == "(auto)":
+            raise ValueError(f"Select an explicit {name} model file")
+        path = Path(value).expanduser()
+        if not path.is_absolute():
             found = find_file(folder, value)
-            if found:
-                values[name] = str(Path(found).resolve())
+            if not found:
+                raise ValueError(f"{name} model file not found: {value}")
+            path = Path(found)
+        if not path.is_file():
+            raise ValueError(f"{name} model file not found: {path}")
+        values[name] = str(path.resolve())
     return values

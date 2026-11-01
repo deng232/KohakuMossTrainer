@@ -11,12 +11,14 @@ This is an implementation with lightweight checks, not a real-training acceptanc
 | Torch / CUDA | Not installed / not available for validation here |
 | ComfyUI / frontend | No runnable local installation |
 
-Passed: 21 Python unittest checks and 9 Node built-in tests; Ruff, Black and
+Passed: 23 Python unittest checks and 16 Node built-in tests; Ruff, Black and
 JavaScript syntax checks. Python tests use the real native ConsoleLogger and
 registry, temporary metric files and an actual local aiohttp test server.
 Runtime orchestration tests replace GPU training at its library boundary.
 Dataset checks cover image/caption byte preservation, subdirectories, rejected
-path traversal and overwrite attempts, failed uploads, and MP/workflow conversion.
+path traversal and overwrite attempts, failed uploads, MP/workflow conversion, Folder Loader path validation, and migration of old
+Training widget values. The server checkpoint browser is checked for output-root
+confinement, symlink escapes, partial folders and frontend path selection.
 No fake model/encoder was trained. No ComfyUI dependency environment was modified.
 Test utilities were supplied through Nix, without creating a venv.
 

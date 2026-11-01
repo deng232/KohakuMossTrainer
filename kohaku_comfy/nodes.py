@@ -1,8 +1,9 @@
-"""The synchronous training output node and the frontend monitor's no-op backend."""
+"""Folder input, synchronous training and the frontend monitor backend."""
+
+from pathlib import Path
 
 import folder_paths
 
-from .config import COMPONENT_DEFAULT
 from .runtime import execute
 
 
@@ -19,7 +20,33 @@ def floating(default, minimum=0):
 
 
 def models(kind):
-    return ([COMPONENT_DEFAULT, *folder_paths.get_filename_list(kind)],)
+    return (folder_paths.get_filename_list(kind),)
+
+
+class KohakuMossFolderLoader:
+    CATEGORY = "KohakuMoss"
+    FUNCTION = "load"
+    RETURN_TYPES = ("MOSS_DATASET",)
+    RETURN_NAMES = ("dataset",)
+    DESCRIPTION = "Recursively loads images with same-name captions. Text is preserved without tag shuffling. Folder names do not set repeat counts."
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "dataset_path": string(
+                    tooltip="Server folder path, or choose a local folder to upload."
+                )
+            }
+        }
+
+    def load(self, dataset_path):
+        if not dataset_path.strip():
+            raise ValueError("Choose a dataset folder first")
+        path = Path(dataset_path).expanduser().resolve()
+        if not path.is_dir():
+            raise ValueError(f"Dataset folder does not exist: {path}")
+        return (str(path),)
 
 
 class KohakuMossTraining:
@@ -41,21 +68,7 @@ class KohakuMossTraining:
                 "TRANSFORMER": models("diffusion_models"),
                 "TEXT_ENCODER": models("text_encoders"),
                 "VAE": models("vae"),
-                "VARIANT": (["base", "sft"],),
-                "dataset_path": string(
-                    tooltip="Server dataset path; use Upload dataset folder to select a local folder. Ignored when DATASETS JSON is supplied."
-                ),
-                "source": (
-                    [
-                        "kohya",
-                        "folder",
-                        "folder_nl",
-                        "jsonl",
-                        "moss_shard",
-                        "parquet",
-                        "webdataset",
-                    ],
-                ),
+                "dataset": ("MOSS_DATASET",),
                 "target_megapixels": (
                     "FLOAT",
                     {
@@ -66,10 +79,8 @@ class KohakuMossTraining:
                         "tooltip": "Target area in megapixels (MP). 1 MP = 1,000,000 pixels.",
                     },
                 ),
-                "CAPTION": string('{"template":"tags"}', True),
                 "LATENT_CACHE": (["offline", "online", "off"],),
                 "TEXT_CACHE": (["offline", "online", "off"],),
-                "CACHE_DIR": string(),
                 "CACHE_DTYPE": (["bf16", "fp16", "fp32", "fp8"],),
                 "TEXT_ENCODE": string("{}", True),
                 "VAE_ENCODE": string("{}", True),
@@ -103,21 +114,17 @@ class KohakuMossTraining:
                     folder_paths.get_output_directory() + "/kohakumoss"
                 ),
                 "RESUME": string(
-                    tooltip="Empty, latest, or a native checkpoint path; applies to the next queued run"
+                    tooltip="Empty starts fresh; latest resumes this run; Browse server checkpoints selects a server checkpoint folder for the next queued run"
                 ),
-                "run_token": integer(0),
-                "advanced_json": string(
-                    '{"SAMPLE_EVERY":0}',
-                    True,
-                    "Native UPPER_CASE overrides; single-GPU host constraints always win",
+                "run_token": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 2**31 - 1,
+                        "tooltip": "Legacy workflow marker; has no effect. Every Queue runs training.",
+                    },
                 ),
-            },
-            "optional": {
-                "DATASETS": string(
-                    "[]",
-                    True,
-                    "Optional native dataset list; empty uses dataset_path/source",
-                )
             },
             "hidden": {"unique_id": "UNIQUE_ID", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
@@ -160,10 +167,12 @@ class KohakuMossMonitor:
 
 
 NODE_CLASS_MAPPINGS = {
+    "KohakuMossFolderLoader": KohakuMossFolderLoader,
     "KohakuMossTraining": KohakuMossTraining,
     "KohakuMossMonitor": KohakuMossMonitor,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "KohakuMossFolderLoader": "KohakuMoss Folder Loader",
     "KohakuMossTraining": "KohakuMoss Training",
     "KohakuMossMonitor": "KohakuMoss uPlot Monitor",
 }
