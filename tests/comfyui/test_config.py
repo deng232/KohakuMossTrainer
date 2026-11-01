@@ -6,6 +6,23 @@ from kohaku_comfy.config import overrides, resolve_models
 
 
 class ConfigTests(unittest.TestCase):
+    def test_megapixels_convert_to_native_area_and_explicit_knobs_win(self):
+        self.assertEqual(
+            overrides({"target_megapixels": 1.0})["TARGET_AREA"], 1_000_000
+        )
+        self.assertEqual(
+            overrides({"target_megapixels": 1.048576})["TARGET_AREA"], 1_048_576
+        )
+        self.assertEqual(
+            overrides(
+                {"target_megapixels": 1.0, "advanced_json": '{"TARGET_AREA":262144}'}
+            )["TARGET_AREA"],
+            262_144,
+        )
+        for value in (0, -1, True, float("inf"), float("nan"), 65):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                overrides({"target_megapixels": value})
+
     def test_final_host_constraints_cannot_be_overridden(self):
         settings = {
             "gpu": 2,

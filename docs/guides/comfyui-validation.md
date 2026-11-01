@@ -11,10 +11,12 @@ This is an implementation with lightweight checks, not a real-training acceptanc
 | Torch / CUDA | Not installed / not available for validation here |
 | ComfyUI / frontend | No runnable local installation |
 
-Passed: 19 Python unittest checks and 6 Node built-in tests; Ruff, Black and
+Passed: 21 Python unittest checks and 9 Node built-in tests; Ruff, Black and
 JavaScript syntax checks. Python tests use the real native ConsoleLogger and
 registry, temporary metric files and an actual local aiohttp test server.
 Runtime orchestration tests replace GPU training at its library boundary.
+Dataset checks cover image/caption byte preservation, subdirectories, rejected
+path traversal and overwrite attempts, failed uploads, and MP/workflow conversion.
 No fake model/encoder was trained. No ComfyUI dependency environment was modified.
 Test utilities were supplied through Nix, without creating a venv.
 

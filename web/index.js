@@ -2,6 +2,7 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import uPlot from "./vendor/uPlot.esm.js";
 import { MonitorState, upstream, workflowKey } from "./monitor.js";
+import { addDatasetPicker, migrateTargetArea } from "./training.js";
 
 const views = new Set();
 const style = document.createElement("link");
@@ -172,6 +173,10 @@ app.registerExtension({
     for (const view of [...views]) view.destroy();
   },
   nodeCreated(node) {
+    if (node.comfyClass === "KohakuMossTraining" || node.type === "KohakuMossTraining") {
+      chain(node, "onRemoved", addDatasetPicker(node, api));
+      chain(node, "onConfigure", (saved) => migrateTargetArea(node, saved));
+    }
     if (node.comfyClass === "KohakuMossMonitor" || node.type === "KohakuMossMonitor") new MonitorView(node);
   },
   afterConfigureGraph() {

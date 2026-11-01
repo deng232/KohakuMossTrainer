@@ -9,7 +9,7 @@
       "VARIANT": "base",
       "dataset_path": "",
       "source": "kohya",
-      "TARGET_AREA": 1048576,
+      "target_megapixels": 1.0,
       "CAPTION": "{\"template\":\"tags\"}",
       "LATENT_CACHE": "offline",
       "TEXT_CACHE": "offline",

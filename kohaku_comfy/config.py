@@ -1,6 +1,7 @@
 """JSON widget values and enforced single-GPU host constraints."""
 
 import json
+import math
 from pathlib import Path
 
 JSON_FIELDS = {
@@ -46,6 +47,16 @@ def json_value(value, kind, name):
 def overrides(settings):
     """Native knob overrides; host execution constraints always win."""
     values = {key: value for key, value in settings.items() if key.isupper()}
+    if "target_megapixels" in settings:
+        area = settings["target_megapixels"]
+        if (
+            isinstance(area, bool)
+            or not isinstance(area, (int, float))
+            or not math.isfinite(area)
+            or not 0.01 <= area <= 64
+        ):
+            raise ValueError("Target area must be between 0.01 and 64 MP")
+        values["TARGET_AREA"] = round(area * 1_000_000)
     values.update(
         json_value(settings.get("advanced_json", "{}"), dict, "advanced_json")
     )

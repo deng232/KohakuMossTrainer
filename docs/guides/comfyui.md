@@ -35,9 +35,32 @@ can run pip subprocesses; training never launches another training process.
 
 ## Workflow
 
+Manager's "Used In Workflow" is a workflow/package usage view, not a backend
+node-registration check. Load the example workflow or add the two KohakuMoss
+nodes before checking it. If the nodes are searchable but the usage view still
+shows zero, Manager may lack this Git repository's node-to-package mapping or
+have stale cached metadata. The root `node_list.json` supplies explicit node
+names for Manager's scanner; it does not itself update the central Manager
+database. If the nodes are not searchable, inspect ComfyUI startup output for
+an import/installation failure instead.
+
 Load [examples/two-node-workflow.json](../../examples/two-node-workflow.json).
 Set `WEIGHTS` to your ComfyUI models folder or a supported HF weights root,
 choose the transformer/text encoder/VAE, and set `dataset_path` and `source`.
+Use **Upload dataset folder** on the Training node to open the browser's local
+folder picker, like Load Image's upload action. Images and `.txt`, `.caption`,
+`.json`, `.jsonl` sidecars are uploaded with their subdirectory structure to
+`ComfyUI/input/kohakumoss_datasets/<unique-id>/`. Other file types are skipped.
+The server path is filled in only after every supported file succeeds; this
+does not queue training. Hand-entered server paths remain supported. Files are
+limited to 100 MiB each. Failed/cancelled uploads can leave earlier completed
+files in their isolated folder; no existing dataset is overwritten.
+
+Target area uses **MP**: `1.0` means 1,000,000 pixels. The native `TARGET_AREA`
+knob still receives integer pixel area; an explicit `advanced_json` value takes
+precedence. Older graph workflows with a pixel-valued widget convert to MP on
+load; older API prompts should use `target_megapixels`.
+
 The model dropdowns respect ComfyUI's additional model search paths. Absolute
 component paths and other native knobs can be supplied through `advanced_json`.
 
@@ -104,7 +127,9 @@ is marked. Old tasks can read a verified native rotated metrics file; when a
 resume/reused directory makes old file ownership ambiguous, only that old
 task's retained memory rows are returned. Realtime metrics come from the logger,
 not file polling. Task discovery does not survive a ComfyUI server restart;
-the native files/checkpoints do survive. HTTP routes are read-only, not controls.
+the native files/checkpoints do survive. Job HTTP routes are read-only, not controls.
+Dataset upload uses separate `POST /kohakumoss/datasets` and
+`POST /kohakumoss/datasets/{upload_id}/files` routes under the same server policy.
 
 ## Lightweight checks
 
@@ -112,7 +137,7 @@ With the shared environment's existing dependencies, from the repository root:
 
 ```sh
 python -m unittest discover -s tests/comfyui -v
-node --test tests/comfyui/monitor.test.js
+node --test tests/comfyui/*.test.js
 ```
 
 These checks cover configuration boundaries, real ConsoleLogger persistence,

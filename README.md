@@ -10,6 +10,8 @@ the installed Torch stack and rejects incompatible Torch versions.
 
 Restart ComfyUI, then load [the two-node workflow](examples/two-node-workflow.json).
 Set your model and dataset paths before queuing training.
+The Training node includes a local dataset-folder upload button (images and
+captions), and target area is entered in megapixels (MP).
 See [the ComfyUI guide](docs/guides/comfyui.md) for configuration and limitations.
 Real ComfyUI/GPU acceptance remains pending; see [validation](docs/guides/comfyui-validation.md).
 

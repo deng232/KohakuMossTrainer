@@ -43,7 +43,7 @@ class KohakuMossTraining:
                 "VAE": models("vae"),
                 "VARIANT": (["base", "sft"],),
                 "dataset_path": string(
-                    tooltip="Dataset path; ignored when DATASETS JSON is supplied"
+                    tooltip="Server dataset path; use Upload dataset folder to select a local folder. Ignored when DATASETS JSON is supplied."
                 ),
                 "source": (
                     [
@@ -56,7 +56,16 @@ class KohakuMossTraining:
                         "webdataset",
                     ],
                 ),
-                "TARGET_AREA": integer(1024 * 1024, 256),
+                "target_megapixels": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.01,
+                        "max": 64,
+                        "step": 0.1,
+                        "tooltip": "Target area in megapixels (MP). 1 MP = 1,000,000 pixels.",
+                    },
+                ),
                 "CAPTION": string('{"template":"tags"}', True),
                 "LATENT_CACHE": (["offline", "online", "off"],),
                 "TEXT_CACHE": (["offline", "online", "off"],),
