@@ -1,0 +1,125 @@
+{
+  "last_node_id": 2,
+  "last_link_id": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "KohakuMossTraining",
+      "pos": [
+        50,
+        50
+      ],
+      "size": [
+        460,
+        1500
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "training_job",
+          "type": "TRAINING_JOB",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KohakuMossTraining"
+      },
+      "widgets_values": [
+        "models",
+        "(auto)",
+        "(auto)",
+        "(auto)",
+        "base",
+        "",
+        "kohya",
+        1048576,
+        "{\"template\":\"tags\"}",
+        "offline",
+        "offline",
+        "",
+        "bf16",
+        "{}",
+        "{}",
+        "auto",
+        "lora",
+        32,
+        32,
+        0.0001,
+        1000,
+        12288,
+        1,
+        "{\"mode\":\"cosine\",\"warmup\":100,\"end\":-1,\"min_value\":0.1}",
+        "auto",
+        "{}",
+        "bf16",
+        0,
+        500,
+        0,
+        3,
+        "auto",
+        "comfy",
+        5,
+        "bench",
+        10,
+        "my-lora",
+        "output/kohakumoss",
+        "",
+        0,
+        "{\"SAMPLE_EVERY\":0}",
+        "[]"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "KohakuMossMonitor",
+      "pos": [
+        600,
+        50
+      ],
+      "size": [
+        640,
+        500
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "training_job",
+          "type": "TRAINING_JOB",
+          "link": 1
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "KohakuMossMonitor"
+      },
+      "widgets_values": [
+        true,
+        true,
+        1,
+        10000
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "TRAINING_JOB"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

@@ -1,0 +1,62 @@
+{
+  "1": {
+    "class_type": "KohakuMossTraining",
+    "inputs": {
+      "WEIGHTS": "models",
+      "TRANSFORMER": "(auto)",
+      "TEXT_ENCODER": "(auto)",
+      "VAE": "(auto)",
+      "VARIANT": "base",
+      "dataset_path": "",
+      "source": "kohya",
+      "TARGET_AREA": 1048576,
+      "CAPTION": "{\"template\":\"tags\"}",
+      "LATENT_CACHE": "offline",
+      "TEXT_CACHE": "offline",
+      "CACHE_DIR": "",
+      "CACHE_DTYPE": "bf16",
+      "TEXT_ENCODE": "{}",
+      "VAE_ENCODE": "{}",
+      "VAE_DTYPE": "auto",
+      "ALGO": "lora",
+      "DIM": 32,
+      "ALPHA": 32,
+      "LR": 0.0001,
+      "STEPS": 1000,
+      "MAX_TOKENS": 12288,
+      "GRAD_ACC": 1,
+      "SCHEDULE": "{\"mode\":\"cosine\",\"warmup\":100,\"end\":-1,\"min_value\":0.1}",
+      "MEMORY_PROFILE": "auto",
+      "MEMORY_OVERRIDES": "{}",
+      "PRECISION": "bf16",
+      "gpu": 0,
+      "SAVE_EVERY": 500,
+      "SAVE_MINUTES": 0,
+      "KEEP_LAST": 3,
+      "FINAL_CHECKPOINT": "auto",
+      "SAVE_FORMAT": "comfy",
+      "METRICS_EVERY": 5,
+      "METRICS_LEVEL": "bench",
+      "LOG_EVERY": 10,
+      "RUN_NAME": "my-lora",
+      "OUTPUT_DIR": "output/kohakumoss",
+      "RESUME": "",
+      "run_token": 0,
+      "advanced_json": "{\"SAMPLE_EVERY\":0}",
+      "DATASETS": "[]"
+    }
+  },
+  "2": {
+    "class_type": "KohakuMossMonitor",
+    "inputs": {
+      "training_job": [
+        "1",
+        0
+      ],
+      "show_lr": true,
+      "show_vram": true,
+      "smoothing": 1,
+      "history_points": 10000
+    }
+  }
+}

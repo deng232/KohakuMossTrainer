@@ -1,0 +1,6 @@
+{
+  "name": "comfyui-kohakumoss-trainer",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "node --test tests/comfyui/*.test.js"}
+}

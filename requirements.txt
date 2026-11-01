@@ -1,0 +1,2 @@
+# Dependencies are installed by install.py using ComfyUI's existing interpreter.
+# Its constraints protect ComfyUI's Torch stack; do not list kohakumoss here.

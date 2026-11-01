@@ -1,5 +1,20 @@
 # KohakuMoss
 
+## ComfyUI installation
+
+This repository is also a ComfyUI custom-node package. In ComfyUI-Manager,
+choose **Install via Git URL** and paste this repository's GitHub URL.
+The root `install.py` installs this checkout and its CUDA dependencies into
+ComfyUI's existing Python environment; no separate venv is needed. It preserves
+the installed Torch stack and rejects incompatible Torch versions.
+
+Restart ComfyUI, then load [the two-node workflow](examples/two-node-workflow.json).
+Set your model and dataset paths before queuing training.
+See [the ComfyUI guide](docs/guides/comfyui.md) for configuration and limitations.
+Real ComfyUI/GPU acceptance remains pending; see [validation](docs/guides/comfyui-validation.md).
+
+## Standalone trainer
+
 A finetuning framework for [MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base)
 (MOSS-Image-Base / -SFT): every LyCORIS algorithm and full finetune on text-image data at
 native resolutions, plus inference, on Windows and Linux, from 6 GB cards to multi-GPU
