@@ -1,0 +1,29 @@
+ENV 3.13.16 (main, Oct 14 2026, 01:04:01) [Clang 23.1.3 ] 2.14.1+cu130 13.0 3.8.0 4.1.3
+ALLOCATOR cudaMallocAsync
+GPU NVIDIA GeForce RTX 3080 Ti
+SOURCE /runtime/venv/lib/python3.13/site-packages/lycoris/kernels/triton/lora/stream.py 74d8f8411ae4b57b218864b1cd939a5ee1631f8233ff718b2bc97408f140efb3
+CANDIDATE_BEGIN {'BLOCK_M': 16, 'BLOCK_N': 32, 'BLOCK_K': 128, 'num_warps': 2, 'num_stages': 3} sets= 28 graph= False
+CANDIDATE_BEGIN {'BLOCK_M': 16, 'BLOCK_N': 128, 'BLOCK_K': 32, 'num_warps': 2, 'num_stages': 3} sets= 28 graph= False
+CANDIDATE_BEGIN {'BLOCK_M': 32, 'BLOCK_N': 32, 'BLOCK_K': 64, 'num_warps': 2, 'num_stages': 4} sets= 28 graph= False
+CANDIDATE_BEGIN {'BLOCK_M': 16, 'BLOCK_N': 64, 'BLOCK_K': 128, 'num_warps': 2, 'num_stages': 3} sets= 28 graph= False
+CANDIDATE_BEGIN {'impl': 'torch'} sets= 28 graph= False
+CANDIDATE_BEGIN {'impl': 'atomic'} sets= 28 graph= False
+CANDIDATE_BEGIN {'BLOCK_M': 32, 'BLOCK_N': 32, 'BLOCK_K': 64, 'num_warps': 8, 'num_stages': 3} sets= 28 graph= False
+CANDIDATE_BEGIN {'BLOCK_M': 32, 'BLOCK_N': 32, 'BLOCK_K': 64, 'num_warps': 4, 'num_stages': 4} sets= 28 graph= False
+CANDIDATE_BEGIN {'BLOCK_M': 32, 'BLOCK_N': 32, 'BLOCK_K': 64, 'num_warps': 8, 'num_stages': 2} sets= 28 graph= False
+ERROR backward torch.float16 replay-call=0 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.007692307699471712, "relative_frobenius": 2.248912611690912e-09}
+ERROR backward torch.float16 replay-call=0 gradient=1 {"max_abs": 0.03125, "max_rel": 0.0009407337638549507, "relative_frobenius": 4.610907126334496e-05}
+ERROR backward torch.float16 replay-call=0 gradient=2 {"max_abs": 0.015625, "max_rel": 0.0023622047156095505, "relative_frobenius": 2.803115057758987e-05}
+ERROR backward torch.float16 replay-call=1 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.0071428571827709675, "relative_frobenius": 2.2716157843660767e-09}
+ERROR backward torch.float16 replay-call=1 gradient=1 {"max_abs": 0.015625, "max_rel": 0.0008896797080524266, "relative_frobenius": 3.907893187715672e-05}
+ERROR backward torch.float16 replay-call=1 gradient=2 {"max_abs": 0.015625, "max_rel": 0.002419842639937997, "relative_frobenius": 2.263755231979303e-05}
+ERROR backward torch.float16 replay-call=2 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.014285714365541935, "relative_frobenius": 2.1243726777697702e-09}
+ERROR backward torch.float16 replay-call=2 gradient=1 {"max_abs": 0.0078125, "max_rel": 0.0007412898703478277, "relative_frobenius": 1.1561054634512402e-05}
+ERROR backward torch.float16 replay-call=2 gradient=2 {"max_abs": 0.015625, "max_rel": 0.003963011782616377, "relative_frobenius": 2.6806197638507e-05}
+ERROR backward torch.float16 replay-call=3 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.008771929889917374, "relative_frobenius": 2.9054461059274672e-09}
+ERROR backward torch.float16 replay-call=3 gradient=1 {"max_abs": 0.00390625, "max_rel": 0.0007692307699471712, "relative_frobenius": 6.429111635952722e-06}
+ERROR backward torch.float16 replay-call=3 gradient=2 {"max_abs": 0.001953125, "max_rel": 0.0011293054558336735, "relative_frobenius": 4.387602984934347e-06}
+ERROR backward torch.float16 replay-call=4 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.059604644775390625, "relative_frobenius": 1.7697511234260332e-09}
+ERROR backward torch.float16 replay-call=4 gradient=1 {"max_abs": 0.001953125, "max_rel": 0.00959692895412445, "relative_frobenius": 2.9263467240525642e-06}
+ERROR backward torch.float16 replay-call=4 gradient=2 {"max_abs": 0.001953125, "max_rel": 0.001623376621864736, "relative_frobenius": 3.0316759875859134e-06}
+PASS backward autotuning + 5 calls torch.float16

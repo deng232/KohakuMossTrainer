@@ -1,0 +1,39 @@
+--- a/lycoris/kernels/triton/lora/bypass.py
++++ b/lycoris/kernels/triton/lora/bypass.py
+@@ -282,11 +282,12 @@
+     return any(t is not None and t.dtype == torch.float32 for t in tensors)
+ 
+ 
+-def lora_bypass_fwd(x, up, down, gamma: float = 1.0) -> torch.Tensor:
++def lora_bypass_fwd(x, up, down, gamma: float = 1.0, out=None) -> torch.Tensor:
+     """y = gamma * (x @ down^T) @ up^T, one kernel; x is (T, I) contiguous-ish."""
+     t, i = x.shape
+     o, r = up.shape
+-    out = torch.empty(t, o, device=x.device, dtype=x.dtype)
++    if out is None:
++        out = torch.empty(t, o, device=x.device, dtype=x.dtype)
+     eb = x.element_size()
+ 
+     def launch(p, dst):
+@@ -338,13 +339,17 @@
+     return out
+ 
+ 
+-def lora_bypass_bwd(x, up, down, grad, gamma: float = 1.0):
++def lora_bypass_bwd(x, up, down, grad, gamma: float = 1.0, buffers=None):
+     """(gx, g_up, g_down) of the bypass chain in one kernel launch."""
+     t, i = x.shape
+     o, r = up.shape
+-    gx = torch.empty_like(x)
+-    # One fp32 allocation for both atomic targets: one zero-fill, one cast.
+-    pack = GradPack(x.device, (o, r), (r, i))
++    if buffers is None:
++        gx = torch.empty_like(x)
++        pack = GradPack(x.device, (o, r), (r, i))
++    else:
++        gx, pack = buffers
++        # Reused atomic destinations must start at zero on every replay.
++        pack.flat.zero_()
+     gu, gd = pack
+     eb = x.element_size()
+ 

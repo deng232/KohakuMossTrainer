@@ -1,0 +1,17 @@
+--- a/lycoris/kernels/triton/lora/bypass.py
++++ b/lycoris/kernels/triton/lora/bypass.py
+@@ -282,11 +282,12 @@
+     return any(t is not None and t.dtype == torch.float32 for t in tensors)
+ 
+ 
+-def lora_bypass_fwd(x, up, down, gamma: float = 1.0) -> torch.Tensor:
++def lora_bypass_fwd(x, up, down, gamma: float = 1.0, out=None) -> torch.Tensor:
+     """y = gamma * (x @ down^T) @ up^T, one kernel; x is (T, I) contiguous-ish."""
+     t, i = x.shape
+     o, r = up.shape
+-    out = torch.empty(t, o, device=x.device, dtype=x.dtype)
++    if out is None:
++        out = torch.empty(t, o, device=x.device, dtype=x.dtype)
+     eb = x.element_size()
+ 
+     def launch(p, dst):

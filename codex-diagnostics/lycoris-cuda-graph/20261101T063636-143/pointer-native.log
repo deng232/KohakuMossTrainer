@@ -1,0 +1,12 @@
+torch: 2.14.1+cu130 cuda runtime: 13.0
+triton: 3.8.0
+lycoris-lora: 4.1.3
+allocator: native
+gpu: NVIDIA GeForce RTX 3080 Ti device: 0
+CUDA_LAUNCH_BLOCKING: None
+          outside x: device=cuda:0, ptr=0x7070c1c00000, driver_result=0, device_ptr=0x7070c1c00000
+captured external x: device=cuda:0, ptr=0x7070c1c00000, driver_result=0, device_ptr=0x7070c1c00000
+     captured new y: device=cuda:0, ptr=0x7070c5600000, driver_result=0, device_ptr=0x7070c5600000
+    after capture y: device=cuda:0, ptr=0x7070c5600000, driver_result=0, device_ptr=0x7070c5600000
+     after replay y: device=cuda:0, ptr=0x7070c5600000, driver_result=0, device_ptr=0x7070c5600000
+graph capture/replay completed

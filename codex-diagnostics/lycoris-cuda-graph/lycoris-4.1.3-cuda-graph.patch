@@ -1,0 +1,139 @@
+--- a/lycoris/kernels/triton/lora/stream.py
++++ b/lycoris/kernels/triton/lora/stream.py
+@@ -260,15 +260,16 @@
+     return (y if base2 is None else base2 + y).to(out_dtype)
+ 
+ 
+-def _bypass_fwd_run(cfg, flat, u, d, scale, base2, out_dtype):
++def _bypass_fwd_run(cfg, flat, u, d, scale, base2, out_dtype, out=None, atomic_out=None):
+     if cfg == TORCH:
+         return _torch_bypass(flat, u, d, scale, base2, out_dtype)
+     if cfg == ATOMIC:
+-        y = bypass.lora_bypass_fwd(flat, u, d, scale)
++        y = bypass.lora_bypass_fwd(flat, u, d, scale, out=atomic_out)
+         return (y if base2 is None else base2 + y).to(out_dtype)
+     t, i = flat.shape
+     o, r = u.shape
+-    out = torch.empty(t, o, device=flat.device, dtype=out_dtype)
++    if out is None:
++        out = torch.empty(t, o, device=flat.device, dtype=out_dtype)
+     b = base2 if base2 is not None else out
+     grid = (triton.cdiv(t, cfg["BLOCK_M"]), cfg["SPLIT_O"])
+     _bypass_fwd_kernel[grid](
+@@ -299,19 +300,22 @@
+     return out
+ 
+ 
+-def _bypass_bwd_run(cfg, g2, flat, u, d, scale):
++def _bypass_bwd_run(cfg, g2, flat, u, d, scale, buffers=None):
+     """(gx, g_up, g_down) in the compute dtype, all operands already in it."""
+     if cfg == TORCH:
+         h = flat @ d.t()
+         q = g2 @ u
+         return q @ d * scale, g2.t() @ h * scale, q.t() @ flat * scale
+     if cfg == ATOMIC:
+-        return bypass.lora_bypass_bwd(flat, u, d, g2, scale)
++        return bypass.lora_bypass_bwd(flat, u, d, g2, scale, buffers=buffers)
+     t, i = flat.shape
+     o, r = u.shape
+-    gx = torch.empty_like(flat)
+-    h = torch.empty(t, r, device=flat.device, dtype=flat.dtype)
+-    q = torch.empty_like(h)
++    if buffers is None:
++        gx = torch.empty_like(flat)
++        h = torch.empty(t, r, device=flat.device, dtype=flat.dtype)
++        q = torch.empty_like(h)
++    else:
++        gx, h, q = buffers
+     _bypass_bwd_kernel[(triton.cdiv(t, cfg["BLOCK_M"]),)](
+         flat,
+         d,
+@@ -359,6 +363,12 @@
+     def inputs():
+         return copy_of(x), copy_of(base)
+ 
++    def make_call(c, s):
++        # One retained output per candidate and buffer set, allocated before capture.
++        out = torch.empty(t, o, device=x.device, dtype=out_dtype)
++        atomic_out = torch.empty(t, o, device=x.device, dtype=x.dtype) if c == ATOMIC else None
++        return lambda: _bypass_fwd_run(c, s[0], up, down, gamma, s[1], out_dtype, out, atomic_out)
++
+     cfg = select(
+         dev,
+         key,
+@@ -367,9 +377,7 @@
+             dev,
+             (t * (i + o * (2 if base is not None else 1))) * x.element_size(),
+             inputs,
+-            lambda c, s: lambda: _bypass_fwd_run(
+-                c, s[0], up, down, gamma, s[1], out_dtype
+-            ),
++            make_call,
+         ),
+     )
+     return guarded(
+@@ -395,6 +403,16 @@
+     def inputs():
+         return copy_of(grad), copy_of(x)
+ 
++    def make_backward_call(c, s):
++        buffers = None
++        if c == ATOMIC:
++            buffers = (torch.empty_like(s[1]), bypass.GradPack(x.device, (o, r), (r, i)))
++        elif c != TORCH:
++            buffers = (torch.empty_like(s[1]),
++                       torch.empty(t, r, device=x.device, dtype=x.dtype),
++                       torch.empty(t, r, device=x.device, dtype=x.dtype))
++        return lambda: _bypass_bwd_run(c, s[0], s[1], up, down, gamma, buffers)
++
+     cfg = select(
+         dev,
+         key,
+@@ -403,7 +421,7 @@
+             dev,
+             2 * t * (i + o) * x.element_size(),
+             inputs,
+-            lambda c, s: lambda: _bypass_bwd_run(c, s[0], s[1], up, down, gamma),
++            make_backward_call,
+         ),
+     )
+     return guarded(
+--- a/lycoris/kernels/triton/lora/bypass.py
++++ b/lycoris/kernels/triton/lora/bypass.py
+@@ -282,11 +282,12 @@
+     return any(t is not None and t.dtype == torch.float32 for t in tensors)
+ 
+ 
+-def lora_bypass_fwd(x, up, down, gamma: float = 1.0) -> torch.Tensor:
++def lora_bypass_fwd(x, up, down, gamma: float = 1.0, out=None) -> torch.Tensor:
+     """y = gamma * (x @ down^T) @ up^T, one kernel; x is (T, I) contiguous-ish."""
+     t, i = x.shape
+     o, r = up.shape
+-    out = torch.empty(t, o, device=x.device, dtype=x.dtype)
++    if out is None:
++        out = torch.empty(t, o, device=x.device, dtype=x.dtype)
+     eb = x.element_size()
+ 
+     def launch(p, dst):
+@@ -338,13 +339,17 @@
+     return out
+ 
+ 
+-def lora_bypass_bwd(x, up, down, grad, gamma: float = 1.0):
++def lora_bypass_bwd(x, up, down, grad, gamma: float = 1.0, buffers=None):
+     """(gx, g_up, g_down) of the bypass chain in one kernel launch."""
+     t, i = x.shape
+     o, r = up.shape
+-    gx = torch.empty_like(x)
+-    # One fp32 allocation for both atomic targets: one zero-fill, one cast.
+-    pack = GradPack(x.device, (o, r), (r, i))
++    if buffers is None:
++        gx = torch.empty_like(x)
++        pack = GradPack(x.device, (o, r), (r, i))
++    else:
++        gx, pack = buffers
++        # Reused atomic destinations must start at zero on every replay.
++        pack.flat.zero_()
+     gu, gd = pack
+     eb = x.element_size()
+ 

@@ -1,0 +1,21 @@
+2026-11-01T06:34:21+00:00
+Requested Python: /runtime/venv/bin/python
+origin	https://github.com/deng232/KohakuMossTrainer (fetch)
+origin	https://github.com/deng232/KohakuMossTrainer (push)
+c7fcf539e634a60ed12c53ce5799814faf7ee43e
+?? .codex-diagnostics/lycoris-cuda-graph/environment.log
+?? .codex-diagnostics/lycoris-cuda-graph/run.sh
+?? KohakuMoss_LyCORIS_CUDA_Graph_Codex_Test.md
+?? lycoris_cuda_graph_probe.py
+.codex-diagnostics/lycoris-cuda-graph/run.sh: line 56:  5049 Segmentation fault         (core dumped) nvidia-smi
+nvidia-smi exit: 139
+Workaround references (empty means none):
+
+Accessibility check (host interpreter, not ComfyUI):
+Host Python: /nix/store/xahxrjs30p3mw0a42bqg9ikgkikskw8m-python3-3.14.8/bin/python 3.14.8 (main, Sep 30 2026, 17:55:09) [GCC 16.2.0]
+torch missing
+triton missing
+lycoris missing
+/runtime/venv/bin/python missing
+/dev/nvidia0 missing
+/dev/nvidiactl missing

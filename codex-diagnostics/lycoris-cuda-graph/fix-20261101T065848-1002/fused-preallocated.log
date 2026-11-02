@@ -1,0 +1,154 @@
+ENV 3.13.16 (main, Oct 14 2026, 01:04:01) [Clang 23.1.3 ] 2.14.1+cu130 13.0 3.8.0 4.1.3
+ALLOCATOR cudaMallocAsync
+GPU NVIDIA GeForce RTX 3080 Ti
+SOURCE /runtime/venv/lib/python3.13/site-packages/lycoris/kernels/triton/lora/stream.py 74d8f8411ae4b57b218864b1cd939a5ee1631f8233ff718b2bc97408f140efb3
+CAPTURE_OK direct fused torch.float16
+ERROR torch.float16 replay=0 set=0 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=0 set=0 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.007692307699471712, "relative_frobenius": 2.248912611690912e-09}
+ERROR torch.float16 replay=0 set=0 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=0 set=0 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=0 set=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=0 set=1 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.007936508394777775, "relative_frobenius": 2.3630419843101436e-09}
+ERROR torch.float16 replay=0 set=1 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=0 set=1 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=0 set=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=0 set=2 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.012195121496915817, "relative_frobenius": 1.6516513712261371e-09}
+ERROR torch.float16 replay=0 set=2 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=0 set=2 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=1 set=0 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=1 set=0 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.0071428571827709675, "relative_frobenius": 2.2716157843660767e-09}
+ERROR torch.float16 replay=1 set=0 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=1 set=0 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=1 set=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=1 set=1 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.059604644775390625, "relative_frobenius": 2.0670840594760875e-09}
+ERROR torch.float16 replay=1 set=1 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=1 set=1 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=1 set=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=1 set=2 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.0060240961611270905, "relative_frobenius": 2.043283986452593e-09}
+ERROR torch.float16 replay=1 set=2 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=1 set=2 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=2 set=0 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=2 set=0 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.014285714365541935, "relative_frobenius": 2.1243726777697702e-09}
+ERROR torch.float16 replay=2 set=0 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=2 set=0 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=2 set=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=2 set=1 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.009803921915590763, "relative_frobenius": 1.906056423806035e-09}
+ERROR torch.float16 replay=2 set=1 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=2 set=1 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=2 set=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=2 set=2 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.059604644775390625, "relative_frobenius": 1.6851773310122553e-09}
+ERROR torch.float16 replay=2 set=2 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=2 set=2 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=3 set=0 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=3 set=0 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.008771929889917374, "relative_frobenius": 2.9054461059274672e-09}
+ERROR torch.float16 replay=3 set=0 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=3 set=0 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=3 set=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=3 set=1 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.019999999552965164, "relative_frobenius": 1.925311687855924e-09}
+ERROR torch.float16 replay=3 set=1 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=3 set=1 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=3 set=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=3 set=2 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.009803921915590763, "relative_frobenius": 2.2517865350124566e-09}
+ERROR torch.float16 replay=3 set=2 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=3 set=2 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=4 set=0 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=4 set=0 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.059604644775390625, "relative_frobenius": 1.7697511234260332e-09}
+ERROR torch.float16 replay=4 set=0 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=4 set=0 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=4 set=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=4 set=1 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.009803921915590763, "relative_frobenius": 1.9447659038718257e-09}
+ERROR torch.float16 replay=4 set=1 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=4 set=1 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=4 set=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=4 set=2 gradient=0 {"max_abs": 5.960464477539063e-08, "max_rel": 0.010204081423580647, "relative_frobenius": 2.5790491964272633e-09}
+ERROR torch.float16 replay=4 set=2 gradient=1 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+ERROR torch.float16 replay=4 set=2 gradient=2 {"max_abs": 0.0, "max_rel": 0.0, "relative_frobenius": 0.0}
+TIMING torch.float16 graph_ms_3sets= 0.06873279809951782 eager_ms_3sets= 0.32819199562072754
+[W1101 06:59:33.995046870 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d4002800
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)
+[W1101 06:59:33.995059806 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d4001c00
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)
+[W1101 06:59:33.995070244 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d4000c00
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)
+[W1101 06:59:33.995073576 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d4000000
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)
+PASS fused forward/backward + 5 replays torch.float16
+CAPTURE_OK direct fused torch.bfloat16
+[W1101 06:59:33.067938281 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d4003800
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)
+ERROR torch.bfloat16 replay=0 set=0 {"max_abs": 0.015625, "max_rel": 12.132075309753418, "relative_frobenius": 0.0011420311639085412}
+[W1101 06:59:33.069339316 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d4004400
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)
+ERROR torch.bfloat16 replay=0 set=0 gradient=0 {"max_abs": 0.0078125, "max_rel": 27.399999618530273, "relative_frobenius": 0.0029091439209878445}
+ERROR torch.bfloat16 replay=0 set=0 gradient=1 {"max_abs": 0.25, "max_rel": 2.319277048110962, "relative_frobenius": 0.002810528501868248}
+ERROR torch.bfloat16 replay=0 set=0 gradient=2 {"max_abs": 0.25, "max_rel": 8.281436920166016, "relative_frobenius": 0.003567446954548359}
+ERROR torch.bfloat16 replay=0 set=1 {"max_abs": 0.015625, "max_rel": 43.34782791137695, "relative_frobenius": 0.0011837382335215807}
+ERROR torch.bfloat16 replay=0 set=1 gradient=0 {"max_abs": 0.005859375, "max_rel": 139.0, "relative_frobenius": 0.0029124696739017963}
+ERROR torch.bfloat16 replay=0 set=1 gradient=1 {"max_abs": 0.25, "max_rel": 2.6787147521972656, "relative_frobenius": 0.0030798285733908415}
+ERROR torch.bfloat16 replay=0 set=1 gradient=2 {"max_abs": 0.25, "max_rel": 2.105527639389038, "relative_frobenius": 0.003326789243146777}
+ERROR torch.bfloat16 replay=0 set=2 {"max_abs": 0.015625, "max_rel": 349.0, "relative_frobenius": 0.0011826336849480867}
+ERROR torch.bfloat16 replay=0 set=2 gradient=0 {"max_abs": 0.0078125, "max_rel": 98.86206817626953, "relative_frobenius": 0.0030156543944031}
+ERROR torch.bfloat16 replay=0 set=2 gradient=1 {"max_abs": 0.25, "max_rel": 1.784246563911438, "relative_frobenius": 0.0031047130469232798}
+ERROR torch.bfloat16 replay=0 set=2 gradient=2 {"max_abs": 0.25, "max_rel": 6.609561920166016, "relative_frobenius": 0.003580391639843583}
+ERROR torch.bfloat16 replay=1 set=0 {"max_abs": 0.015625, "max_rel": 40.11111068725586, "relative_frobenius": 0.001149979536421597}
+ERROR torch.bfloat16 replay=1 set=0 gradient=0 {"max_abs": 0.0078125, "max_rel": 244.8558807373047, "relative_frobenius": 0.0030100997537374496}
+ERROR torch.bfloat16 replay=1 set=0 gradient=1 {"max_abs": 0.25, "max_rel": 16.36170196533203, "relative_frobenius": 0.002858784282580018}
+ERROR torch.bfloat16 replay=1 set=0 gradient=2 {"max_abs": 0.25, "max_rel": 4.234899520874023, "relative_frobenius": 0.0036637522280216217}
+ERROR torch.bfloat16 replay=1 set=1 {"max_abs": 0.015625, "max_rel": 34.29411697387695, "relative_frobenius": 0.0011619353899732232}
+ERROR torch.bfloat16 replay=1 set=1 gradient=0 {"max_abs": 0.0078125, "max_rel": 145.8000030517578, "relative_frobenius": 0.002973626833409071}
+ERROR torch.bfloat16 replay=1 set=1 gradient=1 {"max_abs": 0.25, "max_rel": 0.988095223903656, "relative_frobenius": 0.003219814971089363}
+ERROR torch.bfloat16 replay=1 set=1 gradient=2 {"max_abs": 0.25, "max_rel": 1.7317073345184326, "relative_frobenius": 0.003339019836857915}
+ERROR torch.bfloat16 replay=1 set=2 {"max_abs": 0.015625, "max_rel": 17.680850982666016, "relative_frobenius": 0.00116527802310884}
+ERROR torch.bfloat16 replay=1 set=2 gradient=0 {"max_abs": 0.00390625, "max_rel": 757.8571166992188, "relative_frobenius": 0.0030367581639438868}
+ERROR torch.bfloat16 replay=1 set=2 gradient=1 {"max_abs": 0.25, "max_rel": 1.4795918464660645, "relative_frobenius": 0.0029559426475316286}
+ERROR torch.bfloat16 replay=1 set=2 gradient=2 {"max_abs": 0.25, "max_rel": 19.086956024169922, "relative_frobenius": 0.0033775391057133675}
+ERROR torch.bfloat16 replay=2 set=0 {"max_abs": 0.015625, "max_rel": 21.83333396911621, "relative_frobenius": 0.0011880218517035246}
+ERROR torch.bfloat16 replay=2 set=0 gradient=0 {"max_abs": 0.0041046142578125, "max_rel": 255.34629821777344, "relative_frobenius": 0.002979941200464964}
+ERROR torch.bfloat16 replay=2 set=0 gradient=1 {"max_abs": 0.25, "max_rel": 1.6714285612106323, "relative_frobenius": 0.0031190011650323868}
+ERROR torch.bfloat16 replay=2 set=0 gradient=2 {"max_abs": 0.25, "max_rel": 1.851282000541687, "relative_frobenius": 0.0033825102727860212}
+ERROR torch.bfloat16 replay=2 set=1 {"max_abs": 0.015625, "max_rel": 25.0, "relative_frobenius": 0.001167851616628468}
+ERROR torch.bfloat16 replay=2 set=1 gradient=0 {"max_abs": 0.0078125, "max_rel": 162.8398895263672, "relative_frobenius": 0.00307545717805624}
+ERROR torch.bfloat16 replay=2 set=1 gradient=1 {"max_abs": 0.25, "max_rel": 3.6863906383514404, "relative_frobenius": 0.003228637622669339}
+ERROR torch.bfloat16 replay=2 set=1 gradient=2 {"max_abs": 0.25, "max_rel": 4.803030490875244, "relative_frobenius": 0.00361500377766788}
+ERROR torch.bfloat16 replay=2 set=2 {"max_abs": 0.015625, "max_rel": 43.35087585449219, "relative_frobenius": 0.0011697226436808705}
+ERROR torch.bfloat16 replay=2 set=2 gradient=0 {"max_abs": 0.0078125, "max_rel": 229.39999389648438, "relative_frobenius": 0.002927194582298398}
+ERROR torch.bfloat16 replay=2 set=2 gradient=1 {"max_abs": 0.25, "max_rel": 2.170212745666504, "relative_frobenius": 0.0028936155140399933}
+ERROR torch.bfloat16 replay=2 set=2 gradient=2 {"max_abs": 0.25, "max_rel": 4.140186786651611, "relative_frobenius": 0.003540071425959468}
+ERROR torch.bfloat16 replay=3 set=0 {"max_abs": 0.03125, "max_rel": 81.02816772460938, "relative_frobenius": 0.0011686355574056506}
+ERROR torch.bfloat16 replay=3 set=0 gradient=0 {"max_abs": 0.0078125, "max_rel": 534.08740234375, "relative_frobenius": 0.0029275170527398586}
+ERROR torch.bfloat16 replay=3 set=0 gradient=1 {"max_abs": 0.25, "max_rel": 2.7860963344573975, "relative_frobenius": 0.002941625891253352}
+ERROR torch.bfloat16 replay=3 set=0 gradient=2 {"max_abs": 0.25, "max_rel": 5.4259257316589355, "relative_frobenius": 0.0034885969944298267}
+ERROR torch.bfloat16 replay=3 set=1 {"max_abs": 0.015625, "max_rel": 24.26241111755371, "relative_frobenius": 0.0011230971431359649}
+ERROR torch.bfloat16 replay=3 set=1 gradient=0 {"max_abs": 0.005859375, "max_rel": 626.1467895507812, "relative_frobenius": 0.003062387928366661}
+ERROR torch.bfloat16 replay=3 set=1 gradient=1 {"max_abs": 0.25, "max_rel": 4.560784339904785, "relative_frobenius": 0.0030445691663771868}
+ERROR torch.bfloat16 replay=3 set=1 gradient=2 {"max_abs": 0.25, "max_rel": 3.3499999046325684, "relative_frobenius": 0.0035765827633440495}
+ERROR torch.bfloat16 replay=3 set=2 {"max_abs": 0.015625, "max_rel": 9.850000381469727, "relative_frobenius": 0.0011460782261565328}
+ERROR torch.bfloat16 replay=3 set=2 gradient=0 {"max_abs": 0.0078125, "max_rel": 163.55215454101562, "relative_frobenius": 0.0029494452755898237}
+ERROR torch.bfloat16 replay=3 set=2 gradient=1 {"max_abs": 0.25, "max_rel": 1.0112272500991821, "relative_frobenius": 0.0030646210070699453}
+ERROR torch.bfloat16 replay=3 set=2 gradient=2 {"max_abs": 0.25, "max_rel": 4.096234321594238, "relative_frobenius": 0.0034193256869912148}
+ERROR torch.bfloat16 replay=4 set=0 {"max_abs": 0.015625, "max_rel": 11.61111068725586, "relative_frobenius": 0.0011291337432339787}
+ERROR torch.bfloat16 replay=4 set=0 gradient=0 {"max_abs": 0.00390625, "max_rel": 390.1199951171875, "relative_frobenius": 0.0030195084400475025}
+ERROR torch.bfloat16 replay=4 set=0 gradient=1 {"max_abs": 0.25, "max_rel": 48.6821174621582, "relative_frobenius": 0.002960323356091976}
+ERROR torch.bfloat16 replay=4 set=0 gradient=2 {"max_abs": 0.25, "max_rel": 3.257309913635254, "relative_frobenius": 0.0036536050029098988}
+ERROR torch.bfloat16 replay=4 set=1 {"max_abs": 0.015625, "max_rel": 171.95237731933594, "relative_frobenius": 0.0011574655072763562}
+ERROR torch.bfloat16 replay=4 set=1 gradient=0 {"max_abs": 0.0078125, "max_rel": 118.255615234375, "relative_frobenius": 0.0029422787483781576}
+ERROR torch.bfloat16 replay=4 set=1 gradient=1 {"max_abs": 0.25, "max_rel": 1.3118278980255127, "relative_frobenius": 0.002842303831130266}
+ERROR torch.bfloat16 replay=4 set=1 gradient=2 {"max_abs": 0.25, "max_rel": 5.6120219230651855, "relative_frobenius": 0.0033236132003366947}
+ERROR torch.bfloat16 replay=4 set=2 {"max_abs": 0.015625, "max_rel": 29.564971923828125, "relative_frobenius": 0.0011916140792891383}
+ERROR torch.bfloat16 replay=4 set=2 gradient=0 {"max_abs": 0.00390625, "max_rel": 612.5555419921875, "relative_frobenius": 0.0030463417060673237}
+ERROR torch.bfloat16 replay=4 set=2 gradient=1 {"max_abs": 0.25, "max_rel": 3.2857143878936768, "relative_frobenius": 0.0032171965576708317}
+ERROR torch.bfloat16 replay=4 set=2 gradient=2 {"max_abs": 0.25, "max_rel": 1.2662161588668823, "relative_frobenius": 0.0035056723281741142}
+TIMING torch.bfloat16 graph_ms_3sets= 0.07404000163078309 eager_ms_3sets= 0.33868799209594724
+[W1101 06:59:33.100433381 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d6002800
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)
+[W1101 06:59:33.100445216 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d6001c00
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)
+[W1101 06:59:33.100448581 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d6000c00
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)
+[W1101 06:59:33.100452228 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d6000000
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)
+PASS fused forward/backward + 5 replays torch.bfloat16
+[W1101 06:59:33.100699025 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d6003800
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)
+[W1101 06:59:33.100710555 CUDAMallocAsyncAllocator.cpp:302] Warning: Attempting uncaptured free of a captured allocation with address 0x8d6004400
+This is technically allowed, but may indicate you are losing the last user-visible tensor through which the allocation can be accessed, so you'll have no way to view the data after future replays of the owning graph. (function freeAsync)

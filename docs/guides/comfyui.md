@@ -22,12 +22,18 @@ python custom_nodes/<repository-directory>/install.py
 ```
 
 The installer installs this checkout in editable mode with its CUDA extras,
-so Manager's Git updates also update the imported trainer source. It does not
+and resolves LyCORIS from the patched `deng232/LyCORIS` GitHub fork, pinned to
+commit `72f9d62972490b9636e88a75e12ea614e77f26cb`. No local `LyCORIS/` directory or
+runtime patch hook is required. Git must be available to install this dependency.
+Manager's Git updates also update the imported trainer source. The installer does not
 clone or pin a second upstream trainer repository. It requires an already installed,
 stable `torch>=2.13,<2.15`, constrains installed Torch companion packages, and
 fails instead of replacing an incompatible Torch stack. Other required Python
-dependencies (including native CUDA extras) are resolved in the shared environment. Pip must be
-available to that interpreter. No packages are installed during node import,
+dependencies (including native CUDA extras) are resolved in the shared environment.
+The installer prefers uv (Python module or executable), explicitly targeting the
+ComfyUI interpreter for installation and dependency checks, and falls back to pip.
+uv-only environments do not need pip or a separate venv.
+No packages are installed during node import,
 workflow load, or training execution. Restart ComfyUI after installation.
 
 `requirements.txt` deliberately contains no unconstrained Kohaku dependency:

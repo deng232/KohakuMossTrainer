@@ -1,0 +1,9 @@
+torch: 2.14.1+cu130 cuda runtime: 13.0
+triton: 3.8.0
+lycoris-lora: 4.1.3
+allocator: cudaMallocAsync
+gpu: NVIDIA GeForce RTX 3080 Ti device: 0
+CUDA_LAUNCH_BLOCKING: None
+LyCORIS tuner: CUDA Graph timing DISABLED
+testing lora_bypass_fwd; inputs all on cuda:0
+LyCORIS kernel + tuner completed; shape= (512, 192)

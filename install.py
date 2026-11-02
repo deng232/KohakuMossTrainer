@@ -1,6 +1,8 @@
 """Manager installer; runs in ComfyUI's interpreter and preserves its Torch stack."""
 
 import importlib.metadata as metadata
+import importlib.util
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,15 +23,22 @@ def check_torch(version):
         )
 
 
+def package_command(interpreter, action):
+    if importlib.util.find_spec("uv") is not None:
+        return [interpreter, "-m", "uv", "pip", action, "--python", interpreter]
+    uv = shutil.which("uv")
+    if uv:
+        return [uv, "pip", action, "--python", interpreter]
+    if importlib.util.find_spec("pip") is not None:
+        return [interpreter, "-m", "pip", action]
+    raise RuntimeError("ComfyUI's environment needs uv or pip to install dependencies")
+
+
 def install_command(interpreter, constraints):
-    return [
-        interpreter,
-        "-m",
-        "pip",
-        "install",
-        "--upgrade",
-        "--upgrade-strategy",
-        "only-if-needed",
+    command = package_command(interpreter, "install")
+    if "--python" not in command:
+        command += ["--upgrade", "--upgrade-strategy", "only-if-needed"]
+    return command + [
         "--constraint",
         str(constraints),
         "--editable",
@@ -55,7 +64,7 @@ def main():
         path = Path(directory) / "constraints.txt"
         path.write_text("\n".join(constraints) + "\n", encoding="utf-8")
         subprocess.run(install_command(sys.executable, path), check=True)
-    subprocess.run([sys.executable, "-m", "pip", "check"], check=True)
+    subprocess.run(package_command(sys.executable, "check"), check=True)
     subprocess.run(
         [
             sys.executable,

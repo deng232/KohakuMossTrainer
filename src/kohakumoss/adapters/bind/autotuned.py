@@ -15,6 +15,7 @@ from lycoris.kernels.select import fusable
 from torch import Tensor
 
 from kohakumoss.adapters.bind import bodies
+from kohakumoss_common.log import get_logger
 from kohakumoss_common.units import MIB
 from kohakumoss_kernels.backends.compile.ops import CompiledOp
 from kohakumoss_kernels.dtypes import short
@@ -41,6 +42,7 @@ WEIGHT_PATTERNS = ((False, True), (True, True), (False, False))
 PAIR_PATTERNS = ((True, True), (False, False))
 BODY = 1  # index of the body candidate in `AutotunedOp.configs`
 _OPS: "weakref.WeakSet[AutotunedOp]" = weakref.WeakSet()
+log = get_logger(__name__)
 
 
 def token_buckets(batch_max: int) -> list[int]:
@@ -205,7 +207,9 @@ def fixed_shapes(ops: tuple, marked: frozenset) -> tuple:
         (
             None
             if not isinstance(a, Tensor)
-            else tuple(a.shape[1:]) if i in marked else tuple(a.shape)
+            else tuple(a.shape[1:])
+            if i in marked
+            else tuple(a.shape)
         )
         for i, a in enumerate(ops)
     )
@@ -402,9 +406,16 @@ class AutotunedOp:
         device = _device(ops)
         key = problem_key(ops, self.op.tokens)
         grad = torch.is_grad_enabled()
-        if self._times(device, key):
+        measuring = self._times(device, key)
+        if measuring:
+            log.info(
+                f"adapter tune {self.name} on {device}, bucket={self._bucket(t)}: LyCORIS tile tuning ..."
+            )
             self._settle_tiles(
                 ops, grad, device, cap if cap is not None else cap_of(device)
+            )
+            log.info(
+                f"adapter tune {self.name}: tiles ready; comparing kernel/body ..."
             )
         cfg = select(
             self.name,
@@ -419,6 +430,8 @@ class AutotunedOp:
             lean=BODY,
             cap=cap,
         )
+        if measuring:
+            log.info(f"adapter tune {self.name}: done, chosen={cfg['impl']}")
         run = _at(self.candidates[cfg["impl"]], ops)
         if decided(self.name, device, key) or _recomputed():
             self.bound[self._bucket(t)] = run
