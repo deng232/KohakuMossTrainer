@@ -22,6 +22,7 @@ from kohakumoss.training.checks.objective import (
     REAL_VARIANTS,
     carries_fp16_fix,
     objective_problems,
+    objective_warnings,
     schedule_problems,
 )
 from kohakumoss.training.checks.outputs import EXPORTS, io_problems
@@ -30,12 +31,14 @@ from kohakumoss.training.checks.parallel import (
     dist_backend,
     parallel_problems,
 )
-from kohakumoss.training.distill import distill_problems
+from kohakumoss.training.distill import distill_problems, distill_warnings
 from kohakumoss.training.exports import with_export_formats
 from kohakumoss.training.layouts import LAYOUTS
 from kohakumoss.training.optim.bundle.deferred import step_sync_problems
 from kohakumoss.training.optim.optimizers.factory import OPTIMIZERS
 from kohakumoss.training.optim.optimizers.kwargs import optimizer_problems
+from kohakumoss.training.optim.outlier import outlier_problems
+from kohakumoss.training.optim.outlier import spec_of as outlier_spec
 from kohakumoss.training.stream_loss import spec_of as stream_spec
 from kohakumoss.training.stream_loss import stream_loss_problems
 from kohakumoss.types.arch import PRESETS
@@ -59,6 +62,7 @@ __all__ = [
     "dist_backend",
     "plan_problems",
     "validate",
+    "knob_warnings",
 ]
 
 KNOWN = frozenset(
@@ -88,7 +92,7 @@ KNOWN = frozenset(
     METRICS_LEVEL STEP_SYNC
     SAMPLE_BATCH SAMPLE_COLUMNS SAMPLE_AT_START
     INIT_FROM WD_TARGET TEACHER TEACHER_PRECISION TEACHER_STREAM DISTILL_WEIGHT
-    DISTILL_WEIGHTING HARD_WEIGHT""".split()
+    DISTILL_WEIGHTING HARD_WEIGHT OUTLIER_DECAY""".split()
 )
 CHOICES = {
     "ADAPTER_MODE": ("bypass", "merge"),
@@ -282,6 +286,7 @@ def validate(k: dict) -> list[str]:
     p += stream_loss_problems(k)
     p += step_sync_problems(k)
     p += wd_target_problems(k, is_full(k))
+    p += outlier_problems(k, is_full(k))
     p += distill_problems(k)
     return list(dict.fromkeys(p))
 
@@ -329,6 +334,12 @@ def plan_problems(k: dict, plan: MemoryPlan) -> list[str]:
     if k.get("WD_TARGET", "zero") == "start" and host_masters:
         p.append(
             "WD_TARGET='start' decays device-stepped weights: optim_state 'gpu' and no "
+            f"stream='swap' (plan: optim_state={plan.optim_state!r}, "
+            f"stream={plan.stream!r})"
+        )
+    if outlier_spec(k) is not None and host_masters:
+        p.append(
+            "OUTLIER_DECAY decays device-stepped weights: optim_state 'gpu' and no "
             f"stream='swap' (plan: optim_state={plan.optim_state!r}, "
             f"stream={plan.stream!r})"
         )
@@ -406,14 +417,21 @@ def deprecations(k: dict) -> list[str]:
     return []
 
 
+def knob_warnings(k: dict) -> list[str]:
+    """The knob combinations that run but are logged: deprecated values, and fp16
+    compute on an unfixed DiT or teacher; PRECISION="auto" is resolved first."""
+    k = with_precision(k)
+    return deprecations(k) + objective_warnings(k) + distill_warnings(k)
+
+
 def check(g: dict) -> dict:
     """Knobs from globals (PRECISION resolved, a set EXPORT_FORMATS mapped onto
-    SAVE_FORMAT / SAVE_MERGED); raises one SystemExit listing every problem and warns
-    on every deprecated value."""
+    SAVE_FORMAT / SAVE_MERGED); raises one SystemExit listing every problem and logs
+    every warning."""
     k = with_export_formats(with_precision(collect(g)))
     problems = validate(k)
     if problems:
         raise SystemExit("invalid configuration:\n  - " + "\n  - ".join(problems))
-    for message in deprecations(k):
+    for message in knob_warnings(k):
         log.warning(message)
     return k

@@ -120,6 +120,8 @@ WEIGHTING = "none"  # "none" | "x0" | "eps"
 #     "sigma" | "one_minus_sigma" | "none")
 #   "rms": {"weight": 1e-3, "target": 1.0, "sigma": "none"}
 #     ((R / target - 1)^2 per block, R the sample's whole-stream RMS, original units)
+#   "write": {"weight": 5e-3, "target": 0.5, "parts": "both", "anneal": 2000, "start": 0}
+#     (relu(share - tau)^2 of each attention / FFN write's top-k share, tau 1 -> target)
 STREAM_LOSS = {}
 CONCENTRATION_LOSS = {}  # the "concentration" term alone (set one of the two)
 STREAM_LOSS_PROBE = 0  # every N steps: per-term gradient norms + cosines; 0 = off
@@ -140,6 +142,9 @@ EPS = 1e-8
 WEIGHT_DECAY = 0.01
 WD_RULES = "moss"  # "moss" (wd on 2-D weights only, decay-to-one on last q/k norm) | "none" | "all"
 WD_TARGET = "zero"  # decay to "zero" | "start" (the run's start weights; full FT)
+OUTLIER_DECAY = (
+    {}
+)  # full FT: p -= lr * rate * sign(p) * relu(|p| - cap * r0); e.g. {"rate": 5.0, "cap": 16.0, "cap_start": 64.0, "cap_anneal": 5000, "warmup": 1000}
 SCHEDULE = {"mode": "cosine", "warmup": 100, "end": -1}  # AnySchedule config
 GRAD_CLIP = 1.0
 STEP_SYNC = "step"  # "step" (host sync every step) | "deferred" (skip decided on the device; host values every gcd(LOG_EVERY, METRICS_EVERY) steps; EMA = 0)

@@ -186,9 +186,10 @@ peaks bring the stream near the fp16 maximum.
 
 | term | fields (default) | adds |
 | --- | --- | --- |
-| `concentration` | `weight`, `k` (32) | `weight` × the mean over blocks of the share of the block output's energy (all tokens of the micro-batch) in its `k` largest channels |
+| `concentration` | `weight`, `k` (32), `dilute` (True) | `weight` × the mean over blocks of the share of the block output's energy (all tokens of the micro-batch) in its `k` largest channels |
 | `peak` | `weight`, `cap` (32768), `top` (1e-4), `tau` (0.25), `sigma` ("sigma") | `weight` × the mean over samples, each weighted by `sigma` (σ, 1 − σ or 1), of the mean over blocks of `softplus((log m − log cap) / tau)`; `m` is the mean of the sample's largest `top` fraction of \|x\| in that block's output, in original units |
 | `rms` | `weight`, `target` (1.0), `sigma` ("none") | `weight` × the mean over samples, each weighted by `sigma`, of the mean over blocks of `(R / target − 1)²`; `R` is the sample's whole-stream RMS in that block's output (over all its tokens and channels), in original units |
+| `write` | `weight`, `target` (required), `k` (32), `parts` ("both"), `anneal` (0), `start` (0), `dilute` (False) | `weight` × the mean over the tapped sublayers (`parts`: "attn", "ffn" or "both", every joint block) of `relu(c − τ(step))²`; `c` is the share of the sublayer write's energy (all tokens of the micro-batch) in its `k` largest channels, `τ` is 1 before `start` and falls linearly to `target` over `anneal` steps |
 
 `CONCENTRATION_LOSS = {"weight": w, "k": k}` is the `concentration` term alone; set one
 of the two knobs.
@@ -228,6 +229,35 @@ of the two knobs.
     analogy with the other terms.
   - Cost: one fp32 norm per token per block, read from the block output autograd keeps
     anyway (no fp32 copy of the stream).
+- **Dilution.** A share `top / total` has two ways down: shrink the top channels, or
+  grow every other channel (the total). `dilute=False` detaches the total, so the
+  gradient only shrinks the top channels. `concentration` keeps the full total by default;
+  `write` detaches it by default.
+- **Write.** The concentration of what each sublayer adds to the stream, not of the
+  stream itself. The attention part's write is `out − x · r` (its residual scale `r`), the
+  FFN part's `out − x`, both read where the block forms them.
+  - A state term (`concentration` on block outputs) is met as well by later blocks writing
+    the negative of the inherited massive channels, which keeps every write concentrated:
+    on MOSS, a finetune carrying concentration 0.01 for 10k steps raised the inherited
+    top-32 mass that blocks 14–39's FFN writes cancel from 7–11% to 45–102% per block,
+    while their attention writes added it back at the same rate, and left every weight
+    tensor's max / rms as it was. A write term prices both the creating and the
+    cancelling write.
+  - Base MOSS writes are concentrated: the top-32 share is 0.83–0.95 for attention and
+    0.78–0.90 for the FFN in blocks 1–35, about 0.99 in block 0, nearly flat over σ. A
+    target near 0 fights every block from the first step; the anneal starts the hinge at
+    1 (no loss, no gradient) and lowers it, so each sublayer is engaged once `τ` passes
+    its share.
+  - The share is scale-free: scaling a whole write (a gate, the modulation) does not
+    lower it; the gradient moves the write's channel mix.
+  - Gradient size: on MOSS base the term with `dilute=False` has about 22–25× the task
+    loss's gradient norm at weight 1 (each part), against 1.4× for `concentration`; a
+    weight near 0.004 puts it at a tenth of the task gradient. Its cosine with the task
+    gradient is about −0.05.
+  - Cost: one fp32 channel-energy vector per tapped sublayer per block, from the write in
+    the stream dtype; autograd keeps that write ([T, D]) for the norm's backward, which a
+    block checkpoint recomputes instead. The tap runs in every grad-enabled forward (so a
+    checkpoint recompute matches its forward) and is skipped under no_grad.
 - Each micro-batch adds its penalty weighted by its share of the step's loss tokens, so
   the step total is the token-weighted mean, as for the loss itself.
 - The training step only: validation reports the plain loss. Logged metrics:
@@ -235,8 +265,10 @@ of the two knobs.
   of the micro-batch, original units), `rms_loss` (the unweighted term), `stream_rms`
   (the geometric mean token RMS over every block: the typical token),
   `stream_rms_block_max` (the largest per-block geometric mean), `stream_rms_q` (the
-  whole-stream RMS of the micro-batch, mean over blocks: the level the term pulls) and
-  `stream_rms_q_block_max` (its largest block).
+  whole-stream RMS of the micro-batch, mean over blocks: the level the term pulls),
+  `stream_rms_q_block_max` (its largest block), `write_loss` (the unweighted write
+  hinge), `write_share_attn` / `write_share_ffn` (the mean write share of each tapped
+  part) and `write_target` (`τ` at the step).
 - **Gradient probe.** `STREAM_LOSS_PROBE = N` (`PARALLEL="none"`) measures, every N
   steps, the gradient of the task loss and of each term (unweighted, at the micro-batch's
   share) over the trainable parameters: `grad_<name>` (norm), `grad_<name>_<group>` (per
@@ -312,10 +344,56 @@ within 1e-6 absolute (3e-4 relative) of the fp64 table.
   included). Cost: 2 bytes per decayed parameter and one add per step. Full finetune
   only, with OPTIMIZER `adamw`, `adamw16`, `adamw8bit`, `adamw8bit_kernel` or `muon`
   and device-stepped weights (`optim_state="gpu"`, no `stream="swap"`).
+- **Outlier decay.** `OUTLIER_DECAY = {"rate": λ, "cap": c, ...}` decays each weight
+  element's excess over `c` times its tensor's start RMS `r0`, after the optimiser step:
+  `p -= lr·λ(t)·sign(p)·relu(|p| − c(t)·r0)`. See [Outlier decay](#outlier-decay).
 - **`SCHEDULE`** is an AnySchedule config; `end: -1` means `STEPS`. Loading a checkpoint
   writes the restored step's scheduled values (lr and any other scheduled key) into the
   optimiser groups the schedule drives, including the lr holders of the per-parameter
   and offload optimisers, so the first resumed step runs at the scheduled lr.
+
+### Outlier decay
+
+A decoupled decay of the excess of each weight element over a cap, on every trained
+weight it targets, applied after the optimiser step like AdamW's own decay:
+
+    p -= lr_t · λ(t) · sign(p) · relu(|p| − c(t) · r0)
+
+| field (default) | meaning |
+| --- | --- |
+| `rate` (0 = off) | λ; an excess shrinks with time constant `1 / (λ · lr)` steps |
+| `cap` (16) | `c`, in units of the tensor's start RMS `r0` |
+| `cap_start` (0 = `cap`), `cap_anneal` (0) | `c(t)` falls geometrically from `cap_start` to `cap` over `cap_anneal` steps |
+| `warmup` (0) | λ ramps linearly from 0 over this many steps (on top of the lr schedule) |
+| `targets` ("" = all), `exclude` ("") | regexes over the trainable parameter names |
+| `include_1d` (False) | also 1-D tensors (gains, biases) |
+
+- **Why decoupled.** The same penalty `λ/2 · relu(|p| − c r0)²` added to the loss goes
+  through Adam, whose normalised update moves an element by about `lr` per step whatever
+  the penalty's size: it removes `lr × steps` at most (2e-5 × 10k = 0.2 against an
+  element of 5.1 in MOSS's block 0 `ffn_down`). The decoupled form is proportional to the
+  excess and follows the lr schedule; it never moves an element by more than
+  `lr · λ · excess` in a step.
+- **Against the task.** Where the task keeps an element large, Adam moves it back by
+  about `lr` per step, so it settles at an excess of about `1 / λ` (absolute) over the
+  cap rather than at the cap.
+- **Reference.** `r0` is each targeted tensor's RMS at the run start (the live weights
+  before a resume restores them, or INIT_FROM's trainable state on a resumed run), in the
+  run's own fold space, fixed for the run: a reference that followed the live RMS could
+  be met by growing every element.
+- **Footprint on MOSS base.** Elements above 16 / 32 times their tensor's RMS in the
+  joint blocks: about 2400 / 120 of 5e9 (largest: `layers.41` `ffn_up_gate` 113,
+  `layers.0` `ffn_down` 103, `layers.41` `k` 63); the default targets also cover the
+  embedders, the conditioning and the final linear.
+- **Metrics.** `outlier_over` (elements above the cap at the step) and `outlier_max`
+  (the largest `|p| / (c r0)` among them, 1 when none).
+- **Cost.** One elementwise pass over the targeted tensors per step and a temporary of
+  the largest one.
+- Full finetune only, with OPTIMIZER `adamw`, `adamw8bit`, `adamw8bit_kernel` or `muon`
+  (fp32 device weights: a decay of `lr · λ` of an element is below a 16-bit weight's
+  resolution), device-stepped weights (`optim_state="gpu"`, no `stream="swap"`), and
+  PARALLEL other than `fsdp`. The plain, deferred (gated by the device flag) and fused
+  (per parameter, after its update) steps all apply it.
 
 ## The optimiser step
 
@@ -419,8 +497,12 @@ records it; the pipelines do not.
 - An fp16-fix checkpoint (the fold baked into the weights) trains with
   `FP16_FIX="none"` and that file as `WEIGHTS`; `FP16_FIX="weights"` is not a training
   value (inference loads either).
-- Validation rejects `PRECISION="fp16"` on `VARIANT="base"` / `"sft"` with
-  `FP16_FIX="none"`, and `PRECISION="bf16"` when any entry of `DEVICES` has no bf16.
+- `PRECISION="fp16"` on `VARIANT="base"` / `"sft"` with `FP16_FIX="none"` and a
+  `WEIGHTS` file without an fp16-fix fold runs in fp16 as stored, with a warning at
+  start. That fits weights whose residual stream stays in the fp16 range (a healed
+  model such as MOSS-Image-heal). The base and SFT weights overflow it and need a fix.
+  The same warning covers an fp16 distillation teacher.
+- Validation rejects `PRECISION="bf16"` when any entry of `DEVICES` has no bf16.
 
 ## Memory plan in the loop
 
